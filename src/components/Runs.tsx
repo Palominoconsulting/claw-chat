@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type {
   ContextItem,
+  StartPreview,
   Project,
   Stage,
   Task,
@@ -25,7 +26,6 @@ export function Runs({
   project,
   stages,
   tasks,
-  context,
   demo,
   busy,
   mutate,
@@ -44,7 +44,7 @@ export function Runs({
       acceptance: "Describe tradeoffs without inventing facts",
     },
   ]);
-  const [preview, setPreview] = useState<Stage | null>(null);
+  const [preview, setPreview] = useState<StartPreview | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   function change(index: number, field: keyof TaskBrief, value: string) {
     setBriefs(
@@ -84,15 +84,16 @@ export function Runs({
             </Button>
           </div>
           <p>
-            <strong>{preview.title}</strong> · {preview.briefs.length} tasks ·{" "}
-            {context
+            <strong>{preview.stage.title}</strong> ·{" "}
+            {preview.stage.briefs.length} tasks ·{" "}
+            {preview.items
               .reduce((sum, item) => sum + item.text.length, 0)
               .toLocaleString()}{" "}
-            excerpt characters · context v{project.contextVersion}
+            excerpt characters · context v{preview.contextVersion}
           </p>
           <details open>
             <summary>Exact selected context</summary>
-            {context.map((item) => (
+            {preview.items.map((item) => (
               <blockquote key={item.id}>
                 <Tag>{item.kind.replaceAll("_", " ")}</Tag>
                 <p>{item.text}</p>
@@ -100,7 +101,7 @@ export function Runs({
             ))}
           </details>
           <ul>
-            {preview.briefs.map((brief, index) => (
+            {preview.stage.briefs.map((brief, index) => (
               <li key={index}>
                 <strong>{brief.objective}</strong>
                 <p>Acceptance: {brief.acceptance}</p>
@@ -120,7 +121,9 @@ export function Runs({
             isDisabled={!confirmed || busy}
             onPress={() =>
               void mutate(async () => {
-                await api(`/stages/${preview.id}/start`, {});
+                await api(`/stages/${preview.stage.id}/start`, {
+                  token: preview.token,
+                });
                 setPreview(null);
               })
             }
@@ -135,13 +138,16 @@ export function Runs({
       {stages.map((stage, index) => {
         const predecessor = stages[index - 1];
         const eligible =
-          !predecessor ||
-          (predecessor.status === "approved" &&
-            predecessor.approvedRevision === predecessor.revision &&
-            predecessor.contextVersion === project.contextVersion);
+          !stage.dependencyStale &&
+          (!predecessor ||
+            (predecessor.status === "approved" &&
+              predecessor.approvedRevision === predecessor.revision &&
+              predecessor.contextVersion === project.contextVersion &&
+              !predecessor.dependencyStale));
         const stale =
-          stage.contextVersion !== null &&
-          stage.contextVersion !== project.contextVersion;
+          stage.dependencyStale ||
+          (stage.contextVersion !== null &&
+            stage.contextVersion !== project.contextVersion);
         return (
           <section className="stage" key={stage.id}>
             <div className="stage-number">
@@ -158,7 +164,9 @@ export function Runs({
                   }
                 >
                   {stale
-                    ? "Stale context"
+                    ? stage.dependencyStale
+                      ? "Stale dependency · new project required"
+                      : "Stale context"
                     : stage.status === "draft" && !eligible
                       ? "Waiting for approval"
                       : stage.status}
@@ -208,7 +216,13 @@ export function Runs({
                     }
                     onPress={() => {
                       setConfirmed(false);
-                      setPreview(stage);
+                      void mutate(async () => {
+                        setPreview(
+                          await api<StartPreview>(
+                            `/stages/${stage.id}/preview`,
+                          ),
+                        );
+                      });
                     }}
                   >
                     Preview & start stage

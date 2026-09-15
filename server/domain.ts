@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import type {
   ContextItem,
+  DependencyRef,
+  StartPreview,
   ContextKind,
   Excerpt,
   Lifetime,
@@ -133,6 +135,7 @@ export class Workspace {
           {
             ...stage,
             approvedRevision: null,
+            reviewGeneration: stage.reviewGeneration + 1,
             status: stage.status === "approved" ? "review" : stage.status,
           },
           { project_id: id, position: stage.position },
@@ -175,6 +178,10 @@ export class Workspace {
       briefs,
       status: "draft",
       revision: 1,
+      reviewGeneration: 0,
+      launchToken: null,
+      dependencies: [],
+      dependencyStale: false,
       approvedRevision: null,
       snapshotId: null,
       contextVersion: null,
@@ -196,23 +203,134 @@ export class Workspace {
     if (project.status === "archived") throw new Error("Project is archived");
     return project;
   }
-  startStage(id: string): Task[] {
-    return this.store.transaction(() => {
-      const stage = this.stage(id);
-      const project = this.assertActive(stage.projectId);
-      if (stage.status !== "draft") return [];
-      const predecessor = this.stages(project.id).find(
-        (other) => other.position === stage.position - 1,
+  private dependencyRef(stage: Stage): DependencyRef {
+    return {
+      stageId: stage.id,
+      revision: stage.revision,
+      reviewGeneration: stage.reviewGeneration,
+      snapshotId: stage.snapshotId,
+      digest: digest(
+        JSON.stringify({
+          proposal: stage.proposal,
+          assumptions: stage.assumptions,
+          missing: stage.missing,
+          alternatives: stage.alternatives,
+          dependencies: stage.dependencies,
+        }),
+      ),
+    };
+  }
+  private ancestors(stage: Stage) {
+    return this.stages(stage.projectId).filter(
+      (s) => s.position < stage.position,
+    );
+  }
+  previewStart(id: string): StartPreview {
+    const stage = this.stage(id);
+    const project = this.project(stage.projectId);
+    const items = this.context(project.id);
+    const dependencies = this.ancestors(stage).map((s) =>
+      this.dependencyRef(s),
+    );
+    const token = digest(
+      JSON.stringify({
+        id,
+        revision: stage.revision,
+        briefs: stage.briefs,
+        contextVersion: project.contextVersion,
+        contextDigest: digest(JSON.stringify(items)),
+        dependencies,
+      }),
+    );
+    return {
+      stage,
+      items,
+      dependencies,
+      contextVersion: project.contextVersion,
+      token,
+    };
+  }
+  private assertDependencies(stage: Stage) {
+    if (stage.dependencyStale)
+      throw new Error(
+        "Stale ancestor dependency; create a fresh execution project",
       );
+    const ancestors = this.ancestors(stage);
+    for (const ancestor of ancestors) {
       if (
-        predecessor &&
-        (predecessor.status !== "approved" ||
-          predecessor.approvedRevision !== predecessor.revision ||
-          predecessor.contextVersion !== project.contextVersion)
+        ancestor.dependencyStale ||
+        ancestor.status !== "approved" ||
+        ancestor.approvedRevision !== ancestor.revision ||
+        ancestor.contextVersion !== this.project(stage.projectId).contextVersion
       )
         throw new Error(
-          "Previous stage must have a current, non-stale approved revision",
+          "Every ancestor must have a current, non-stale approved revision",
         );
+      if (
+        ancestor.snapshotId &&
+        ancestor.dependencies.length !== ancestor.position
+      )
+        throw new Error(
+          "Ancestor dependency history is incomplete; create a fresh project",
+        );
+      for (const dependency of ancestor.dependencies) {
+        if (
+          JSON.stringify(this.dependencyRef(this.stage(dependency.stageId))) !==
+          JSON.stringify(dependency)
+        )
+          throw new Error(
+            "Ancestor dependency changed; create a fresh project",
+          );
+      }
+    }
+    if (
+      stage.snapshotId &&
+      (stage.dependencies.length !== ancestors.length ||
+        stage.dependencies.some(
+          (ref) =>
+            JSON.stringify(this.dependencyRef(this.stage(ref.stageId))) !==
+            JSON.stringify(ref),
+        ))
+    )
+      throw new Error(
+        "Stale ancestor dependency; create a fresh execution project",
+      );
+  }
+  private invalidateDescendants(stage: Stage) {
+    const consumed = this.stages(stage.projectId).some(
+      (s) => s.position > stage.position && s.snapshotId,
+    );
+    if (!consumed) return;
+    for (const child of this.stages(stage.projectId).filter(
+      (s) => s.position > stage.position,
+    )) {
+      this.store.put(
+        "stages",
+        {
+          ...child,
+          dependencyStale: true,
+          approvedRevision: null,
+          reviewGeneration: child.reviewGeneration + 1,
+          status: child.status === "approved" ? "review" : child.status,
+        },
+        { project_id: child.projectId, position: child.position },
+      );
+    }
+  }
+  startStage(id: string, expectedToken: string): Task[] {
+    return this.store.transaction(() => {
+      const stage = this.stage(id);
+      if (expectedToken && stage.launchToken === expectedToken) return [];
+      const project = this.assertActive(stage.projectId);
+      if (!expectedToken || expectedToken !== this.previewStart(id).token)
+        throw new Error(
+          "Stale launch preview; reload and review the exact packet again",
+        );
+      if (stage.status !== "draft")
+        throw new Error(
+          "Stage already admitted; only the original launch receipt can be retried",
+        );
+      this.assertDependencies(stage);
       if (
         this.tasks().some(
           (task) => task.status === "running" || task.status === "unknown",
@@ -242,6 +360,8 @@ export class Workspace {
           ...stage,
           status: "running",
           snapshotId: snapshot.id,
+          launchToken: expectedToken,
+          dependencies: this.ancestors(stage).map((s) => this.dependencyRef(s)),
           contextVersion: project.contextVersion,
         },
         { project_id: project.id, position: stage.position },
@@ -355,11 +475,23 @@ export class Workspace {
     assumptions: string,
     missing: string,
     alternatives: string,
+    expected: { revision: number; generation: number },
   ) {
     this.store.transaction(() => {
       const stage = this.stage(id);
+      if (
+        stage.revision !== expected.revision ||
+        stage.reviewGeneration !== expected.generation
+      )
+        throw new Error("Stale proposal revision or review generation; reload");
       if (!["review", "approved", "changes", "rejected"].includes(stage.status))
         throw new Error("Wait for all results before revising the proposal");
+      this.event(
+        stage,
+        "revise",
+        "Prior full checkpoint retained before revision",
+      );
+      this.invalidateDescendants(stage);
       this.store.put(
         "stages",
         {
@@ -369,6 +501,7 @@ export class Workspace {
           missing,
           alternatives,
           revision: stage.revision + 1,
+          reviewGeneration: stage.reviewGeneration + 1,
           approvedRevision: null,
           status: "review",
         },
@@ -386,11 +519,35 @@ export class Workspace {
     revision: number,
     action: "approve" | "changes" | "reject",
     note: string,
+    generation: number,
+    requestId: string,
   ) {
     this.store.transaction(() => {
       text(note, 4000);
+      text(requestId, 120);
       const stage = this.stage(id);
+      const requestDigest = digest(
+        JSON.stringify({ id, revision, action, note, generation }),
+      );
+      const previous = this.store
+        .all<ReviewEvent>("events", { column: "stage_id", value: id })
+        .find((e) => e.requestId === requestId);
+      if (previous) {
+        if (
+          previous.requestDigest === requestDigest &&
+          stage.reviewGeneration === generation + 1
+        )
+          return;
+        throw new Error(
+          "Stale review action; a newer choice exists or the request key was reused",
+        );
+      }
+      if (stage.reviewGeneration !== generation)
+        throw new Error(
+          "Stale review generation; explicitly review the current choice again",
+        );
       const project = this.assertActive(stage.projectId);
+      this.assertDependencies(stage);
       if (stage.revision !== revision)
         throw new Error("Review revision has changed; reload");
       if (stage.contextVersion !== project.contextVersion)
@@ -405,10 +562,12 @@ export class Workspace {
         throw new Error(
           "All work must be accounted for with completed evidence",
         );
+      this.invalidateDescendants(stage);
       this.store.put(
         "stages",
         {
           ...stage,
+          reviewGeneration: stage.reviewGeneration + 1,
           status:
             action === "approve"
               ? "approved"
@@ -419,10 +578,15 @@ export class Workspace {
         },
         { project_id: project.id, position: stage.position },
       );
-      this.event(stage, action, note);
+      this.event(stage, action, note, { generation, requestId, requestDigest });
     });
   }
-  private event(stage: Stage, action: ReviewEvent["action"], note: string) {
+  private event(
+    stage: Stage,
+    action: ReviewEvent["action"],
+    note: string,
+    receipt: Partial<ReviewEvent> = {},
+  ) {
     this.store.put(
       "events",
       {
@@ -431,6 +595,11 @@ export class Workspace {
         revision: stage.revision,
         action,
         note,
+        ...receipt,
+        checkpoint: stage,
+        checkpointDigest: digest(JSON.stringify(stage)),
+        evidence: this.tasks(stage.id),
+        snapshot: stage.snapshotId ? this.snapshot(stage.id) : null,
         createdAt: now(),
       },
       { stage_id: stage.id },

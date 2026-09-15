@@ -248,6 +248,15 @@ export class GatewayAdapter {
           maxChars: 20000,
         }),
       );
+      const ids = result.messages.map((row) => row.id ?? row.messageId);
+      if (
+        ids.some((id) => !id) ||
+        new Set(ids).size !== ids.length ||
+        result.messages.some(
+          (row) => row.id && row.messageId && row.id !== row.messageId,
+        )
+      )
+        throw new Error("Ambiguous duplicate source identity");
       const session = this.known.find((row) => row.key === key);
       if (result.sessionId !== session?.sessionId) {
         this.selected.clear();

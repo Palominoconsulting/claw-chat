@@ -18,6 +18,7 @@ interface Props {
   onCreated: (project: Project) => void;
   mutate: (fn: () => Promise<unknown>) => Promise<void>;
   inspect: (message: Message) => void;
+  onSelection?: (count: number) => void;
 }
 export function Chat({
   conversation,
@@ -30,15 +31,26 @@ export function Chat({
   onCreated,
   mutate,
   inspect,
+  onSelection,
 }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState<{
+    key: string;
+    pageToken: string;
+    messages: Message[];
+  } | null>(null);
+  const [selectedPage, setSelectedPage] = useState<string>();
   const [draft, setDraft] = useState("");
   const [name, setName] = useState("Harbor field guide");
   const [lifetime, setLifetime] = useState<"short_term" | "long_term">(
     "short_term",
   );
   const [target, setTarget] = useState("");
+  function selectMessages(next: string[]) {
+    setSelected(next);
+    setSelectedPage(page.pageToken);
+    onSelection?.(next.length);
+  }
   if (!conversation)
     return (
       <Empty title="Choose a conversation.">
@@ -48,9 +60,10 @@ export function Chat({
         </p>
       </Empty>
     );
-  const excerpts = page.messages.filter((message) =>
-    selected.includes(message.id),
-  );
+  const currentSelection = selectedPage === page.pageToken ? selected : [];
+  const excerpts =
+    preview?.messages ??
+    page.messages.filter((message) => currentSelection.includes(message.id));
   return (
     <div className="chat-view">
       <div className="section-heading">
@@ -69,7 +82,7 @@ export function Chat({
         <section className="excerpt-preview" aria-label="Excerpt preview">
           <div className="section-heading">
             <h3>Exactly what you’re saving</h3>
-            <Button variant="ghost" onPress={() => setPreview(false)}>
+            <Button variant="ghost" onPress={() => setPreview(null)}>
               Back to chat
             </Button>
           </div>
@@ -89,11 +102,15 @@ export function Chat({
             onSubmit={(event) => {
               event.preventDefault();
               void mutate(async () => {
-                const body = { key: conversation.key, messageIds: selected };
+                const body = {
+                  key: preview.key,
+                  pageToken: preview.pageToken,
+                  messageIds: preview.messages.map((message) => message.id),
+                };
                 if (target) {
                   await api(`/projects/${target}/context`, body);
-                  setPreview(false);
-                  setSelected([]);
+                  setPreview(null);
+                  selectMessages([]);
                 } else {
                   const project = await api<Project>("/projects", {
                     ...body,
@@ -168,18 +185,18 @@ export function Chat({
           >
             {page.messages.map((message) => (
               <article
-                className={`message ${selected.includes(message.id) ? "selected" : ""}`}
+                className={`message ${currentSelection.includes(message.id) ? "selected" : ""}`}
                 key={message.id}
               >
                 <input
                   type="checkbox"
                   aria-label={`Select message ${message.id}`}
-                  checked={selected.includes(message.id)}
+                  checked={currentSelection.includes(message.id)}
                   onChange={(event) =>
-                    setSelected(
+                    selectMessages(
                       event.target.checked
-                        ? [...selected, message.id]
-                        : selected.filter((id) => id !== message.id),
+                        ? [...currentSelection, message.id]
+                        : currentSelection.filter((id) => id !== message.id),
                     )
                   }
                 />
@@ -203,14 +220,23 @@ export function Chat({
           </div>
           <div className="transcript-tools">
             <span>
-              {selected.length
-                ? `${selected.length} selected`
+              {currentSelection.length
+                ? `${currentSelection.length} selected`
                 : "Select messages to curate context"}
             </span>
             <Button
-              variant={selected.length ? "primary" : "secondary"}
-              isDisabled={!selected.length || loading}
-              onPress={() => setPreview(true)}
+              variant={currentSelection.length ? "primary" : "secondary"}
+              isDisabled={
+                !currentSelection.length || loading || !page.pageToken
+              }
+              onPress={() => {
+                if (page.pageToken)
+                  setPreview({
+                    key: conversation.key,
+                    pageToken: page.pageToken,
+                    messages: structuredClone(excerpts),
+                  });
+              }}
             >
               Preview excerpts <Icon name="arrow" />
             </Button>
@@ -220,7 +246,7 @@ export function Chat({
               <Button
                 isDisabled={offset === 0}
                 onPress={() => {
-                  setSelected([]);
+                  selectMessages([]);
                   onPage(Math.max(0, offset - 50));
                 }}
               >
@@ -230,7 +256,7 @@ export function Chat({
               <Button
                 isDisabled={page.nextOffset === null}
                 onPress={() => {
-                  setSelected([]);
+                  selectMessages([]);
                   onPage(page.nextOffset ?? 0);
                 }}
               >

@@ -15,6 +15,7 @@ it("performs challenge-bound read-only handshake and filters selected sessions a
   const sockets = new WebSocketServer({ server });
   const methods: string[] = [];
   let connect: Record<string, unknown> = {};
+  let duplicateHistory = false;
   sockets.on("connection", (socket) => {
     socket.send(
       JSON.stringify({
@@ -75,6 +76,15 @@ it("performs challenge-bound read-only handshake and filters selected sessions a
           ],
           hasMore: false,
         };
+      if (frame.method === "chat.history" && duplicateHistory)
+        payload = {
+          sessionId: "instance-1",
+          messages: [
+            { id: "reused", role: "assistant", content: "FIRST COPY" },
+            { id: "reused", role: "assistant", content: "SECOND COPY" },
+          ],
+          hasMore: false,
+        };
       socket.send(
         JSON.stringify({ type: "res", id: frame.id, ok: true, payload }),
       );
@@ -104,6 +114,18 @@ it("performs challenge-bound read-only handshake and filters selected sessions a
     );
     expect(methods).toEqual(["connect", "sessions.list", "chat.history"]);
     expect(adapter.connection().state).toBe("read_only_unverified");
+    duplicateHistory = true;
+    await expect(adapter.history("fixture:1", 0, 50)).rejects.toThrow(
+      /unsupported|stale/,
+    );
+    expect(
+      methods.filter(
+        (method) =>
+          method !== "connect" &&
+          method !== "sessions.list" &&
+          method !== "chat.history",
+      ),
+    ).toEqual([]);
   } finally {
     adapter.close();
     sockets.clients.forEach((socket) => socket.terminate());

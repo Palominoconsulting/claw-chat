@@ -114,8 +114,8 @@ export function demoHistory(
 export class DemoDispatcher {
   private timers = new Set<ReturnType<typeof setTimeout>>();
   constructor(private workspace: Workspace) {}
-  start(id: string) {
-    const tasks = this.workspace.startStage(id);
+  start(id: string, token: string) {
+    const tasks = this.workspace.startStage(id, token);
     tasks.forEach((task, index) => {
       const timer = setTimeout(
         () => {

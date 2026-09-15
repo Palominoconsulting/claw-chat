@@ -152,3 +152,68 @@ it("caps history page size and disallows arbitrary Gateway RPCs", async () => {
     404,
   );
 });
+
+it("requires explicit launch and review concurrency contracts at the HTTP boundary", async () => {
+  const { Workspace } = await import("../server/domain.js");
+  const w = new Workspace(store);
+  const project = w.createProject("Synthetic HTTP CAS", "short_term", [
+    {
+      text: "SOURCE",
+      author: "Test",
+      source: {
+        gateway: "demo",
+        operator: "test",
+        sessionKey: "test",
+        sessionId: "one",
+        messageId: "one",
+      },
+    },
+  ]);
+  const stage = w.createStage(project.id, "Observe", [
+    { objective: "Observe", acceptance: "Evidence" },
+  ]);
+  expect((await post(`/api/v1/stages/${stage.id}/start`, {})).status).toBe(400);
+  expect(w.tasks(stage.id)).toHaveLength(0);
+  const token = w.previewStart(stage.id).token;
+  const item = w.context(project.id)[0]!;
+  w.editContext(project.id, item.id, "note", "UNSEEN");
+  expect(
+    (await post(`/api/v1/stages/${stage.id}/start`, { token })).status,
+  ).toBe(409);
+  expect(w.tasks(stage.id)).toHaveLength(0);
+  w.startStage(stage.id, w.previewStart(stage.id).token).forEach((task) =>
+    w.recordResult(task.id, "completed", "RESULT"),
+  );
+  expect(
+    (
+      await post(`/api/v1/stages/${stage.id}/review`, {
+        revision: 1,
+        action: "approve",
+        note: "Missing CAS",
+      })
+    ).status,
+  ).toBe(400);
+  const approve = {
+    revision: 1,
+    generation: 0,
+    requestId: crypto.randomUUID(),
+    action: "approve",
+    note: "First tab",
+  };
+  const reject = {
+    ...approve,
+    requestId: crypto.randomUUID(),
+    action: "reject",
+    note: "Second tab",
+  };
+  const responses = await Promise.all([
+    post(`/api/v1/stages/${stage.id}/review`, approve),
+    post(`/api/v1/stages/${stage.id}/review`, reject),
+  ]);
+  expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
+  expect(
+    w
+      .exportProject(project.id)
+      .events.filter((e) => ["approve", "reject"].includes(e.action)),
+  ).toHaveLength(1);
+});

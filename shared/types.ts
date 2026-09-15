@@ -64,7 +64,25 @@ export interface Stage {
   assumptions: string;
   missing: string;
   alternatives: string;
+  reviewGeneration: number;
+  launchToken: string | null;
+  dependencies: DependencyRef[];
+  dependencyStale: boolean;
   createdAt: string;
+}
+export interface DependencyRef {
+  stageId: string;
+  revision: number;
+  reviewGeneration: number;
+  snapshotId: string | null;
+  digest: string;
+}
+export interface StartPreview {
+  stage: Stage;
+  contextVersion: number;
+  items: ContextItem[];
+  dependencies: DependencyRef[];
+  token: string;
 }
 export interface Task {
   id: string;
@@ -100,6 +118,13 @@ export interface ReviewEvent {
     | "context_changed"
     | "reconcile";
   note: string;
+  generation?: number;
+  requestId?: string;
+  requestDigest?: string;
+  checkpoint?: Stage;
+  checkpointDigest?: string;
+  evidence?: Task[];
+  snapshot?: Snapshot | null;
   createdAt: string;
 }
 export interface Message extends Excerpt {
@@ -117,6 +142,7 @@ export interface Conversation {
   status: string;
 }
 export interface MessagePage {
+  pageToken?: string;
   messages: Message[];
   nextOffset: number | null;
   incomplete: boolean;

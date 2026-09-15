@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { z, ZodError } from "zod";
 import type {
   ContextItem,
+  Message,
   Mode,
   Project,
   ReviewEvent,
@@ -23,6 +25,7 @@ import { HttpError, Security, jsonBody } from "./security.js";
 const keySchema = z.string().min(1).max(2000);
 const selectionSchema = z.object({
   key: keySchema,
+  pageToken: z.string().min(1).max(120),
   messageIds: z.array(z.string().min(1).max(2000)).min(1).max(50),
 });
 const lifetime = z.enum(["short_term", "long_term"]);
@@ -121,15 +124,29 @@ export function createApp(options: AppOptions) {
     };
     const excerpts = (data: z.infer<typeof selectionSchema>) => {
       selected(data.key);
-      return [...new Set(data.messageIds)].map((id) => {
-        const message = session.page.find(
+      const candidate = session.pages.get(data.pageToken);
+      if (
+        !candidate ||
+        candidate.key !== data.key ||
+        candidate.expires <= Date.now()
+      )
+        throw new HttpError(
+          409,
+          "Source preview expired or unavailable; reload and preview again",
+        );
+      const messages = JSON.parse(candidate.json) as Message[];
+      if (new Set(data.messageIds).size !== data.messageIds.length)
+        throw new HttpError(409, "Duplicate source selection is ambiguous");
+      return data.messageIds.map((id) => {
+        const matches = messages.filter(
           (item) => item.id === id && item.source.sessionKey === data.key,
         );
-        if (!message)
+        if (matches.length !== 1)
           throw new HttpError(
             409,
             "Message no longer in the viewed page; reload and preview again",
           );
+        const message = matches[0]!;
         return {
           text: message.text,
           author: message.author,
@@ -161,18 +178,64 @@ export function createApp(options: AppOptions) {
         .strict()
         .parse(Object.fromEntries(url.searchParams));
       selected(query.key);
+      const generation = session.selectionGeneration;
       const page =
         mode === "demo"
           ? demoHistory(store, query.key, query.offset, query.limit)
           : await gateway.history(query.key, query.offset, query.limit);
-      if (session.selected !== query.key)
+      if (
+        session.selected !== query.key ||
+        generation !== session.selectionGeneration
+      )
         throw new HttpError(409, "Selection changed while history was loading");
-      session.page = page.messages;
-      return page;
+      if (
+        new Set(page.messages.map((m) => m.id)).size !== page.messages.length ||
+        page.messages.some(
+          (m) =>
+            !m.id ||
+            m.id !== m.source.messageId ||
+            m.source.sessionKey !== query.key,
+        )
+      )
+        throw new HttpError(
+          409,
+          "Ambiguous or mismatched source identities; nothing captured",
+        );
+      const identities = new Set(
+        page.messages.map((m) => JSON.stringify(m.source)),
+      );
+      if (identities.size !== page.messages.length)
+        throw new HttpError(
+          409,
+          "Duplicate source identities; nothing captured",
+        );
+      const candidateJson = JSON.stringify(page.messages);
+      if (candidateJson.length > 1000000)
+        throw new HttpError(409, "Source page exceeds bounded capture size");
+      for (const [token, candidate] of session.pages)
+        if (candidate.expires <= Date.now()) session.pages.delete(token);
+      while (
+        session.pages.size >= 8 ||
+        [...session.pages.values()].reduce(
+          (n, p) => n + p.json.length,
+          candidateJson.length,
+        ) > 2000000
+      )
+        session.pages.delete(session.pages.keys().next().value!);
+      const pageToken = randomUUID();
+      session.pages.set(pageToken, {
+        key: query.key,
+        json: candidateJson,
+        expires: Date.now() + 600000,
+      });
+      return { ...page, pageToken };
     }
     const exportMatch = path.match(/^\/api\/projects\/([^/]+)\/export$/);
     if (exportMatch && req.method === "GET")
       return workspace.exportProject(exportMatch[1]!);
+    const previewMatch = path.match(/^\/api\/stages\/([^/]+)\/preview$/);
+    if (previewMatch && req.method === "GET")
+      return workspace.previewStart(previewMatch[1]!);
     const snapshotMatch = path.match(/^\/api\/stages\/([^/]+)\/snapshot$/);
     if (snapshotMatch && req.method === "GET")
       return workspace.snapshot(snapshotMatch[1]!);
@@ -195,7 +258,8 @@ export function createApp(options: AppOptions) {
         throw new HttpError(404, "Unknown conversation");
       if (mode === "live") gateway.select(key);
       session.selected = key;
-      session.page = [];
+      session.selectionGeneration++;
+      session.pages.clear();
       return { selected: key };
     }
     if (path === "/api/chat") {
@@ -300,23 +364,37 @@ export function createApp(options: AppOptions) {
         return { saved: true };
       }
       if (stageMatch[2] === "start") {
-        z.object({}).strict().parse(body);
-        return { tasks: dispatcher.start(id) };
+        const data = z
+          .object({ token: z.string().regex(/^[a-f0-9]{64}$/) })
+          .strict()
+          .parse(body);
+        return { tasks: dispatcher.start(id, data.token) };
       }
       if (stageMatch[2] === "review") {
         const data = z
           .object({
             revision: z.number().int().positive(),
+            generation: z.number().int().nonnegative(),
+            requestId: z.string().uuid(),
             action: z.enum(["approve", "changes", "reject"]),
             note: z.string().trim().min(1).max(4000),
           })
           .strict()
           .parse(body);
-        workspace.review(id, data.revision, data.action, data.note);
+        workspace.review(
+          id,
+          data.revision,
+          data.action,
+          data.note,
+          data.generation,
+          data.requestId,
+        );
         return { saved: true };
       }
       const data = z
         .object({
+          revision: z.number().int().positive(),
+          generation: z.number().int().nonnegative(),
           proposal: z.string().min(1).max(20000),
           assumptions: z.string().max(20000),
           missing: z.string().max(20000),
@@ -330,6 +408,7 @@ export function createApp(options: AppOptions) {
         data.assumptions,
         data.missing,
         data.alternatives,
+        { revision: data.revision, generation: data.generation },
       );
       return { saved: true };
     }

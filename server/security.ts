@@ -12,7 +12,8 @@ export interface BrowserSession {
   csrf: string;
   expires: number;
   selected: string | null;
-  page: import("../shared/types.js").Message[];
+  selectionGeneration: number;
+  pages: Map<string, { key: string; json: string; expires: number }>;
 }
 export class Security {
   private sessions = new Map<string, BrowserSession>();
@@ -81,7 +82,8 @@ export class Security {
       csrf: randomBytes(32).toString("hex"),
       expires: Date.now() + 12 * 3600000,
       selected: null,
-      page: [],
+      selectionGeneration: 0,
+      pages: new Map<string, { key: string; json: string; expires: number }>(),
     };
     this.sessions.set(token, entry);
     res.setHeader(
@@ -93,7 +95,8 @@ export class Security {
   clearSelections() {
     this.sessions.forEach((session) => {
       session.selected = null;
-      session.page = [];
+      session.selectionGeneration++;
+      session.pages.clear();
     });
   }
   authorize(req: IncomingMessage) {

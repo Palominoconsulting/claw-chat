@@ -1,8 +1,51 @@
+import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Store } from "../server/store.js";
 import { Workspace } from "../server/domain.js";
 import { DemoDispatcher } from "../server/demo.js";
 const stores: Store[] = [];
+// Existing sequential scenarios explicitly load the current preview/review state for each action.
+// Competing-tab and delayed-delivery scenarios retain old contracts in authority.test.ts.
+function launch(workspace: Workspace, id: string) {
+  return workspace.startStage(
+    id,
+    workspace.stage(id).launchToken ?? workspace.previewStart(id).token,
+  );
+}
+function reviewCurrent(
+  workspace: Workspace,
+  id: string,
+  revision: number,
+  action: "approve" | "changes" | "reject",
+  note: string,
+) {
+  return workspace.review(
+    id,
+    revision,
+    action,
+    note,
+    workspace.stage(id).reviewGeneration,
+    randomUUID(),
+  );
+}
+function reviseCurrent(
+  workspace: Workspace,
+  id: string,
+  proposal: string,
+  assumptions: string,
+  missing: string,
+  alternatives: string,
+) {
+  const stage = workspace.stage(id);
+  return workspace.reviseStage(
+    id,
+    proposal,
+    assumptions,
+    missing,
+    alternatives,
+    { revision: stage.revision, generation: stage.reviewGeneration },
+  );
+}
 function fixture() {
   const store = new Store(":memory:", "demo");
   stores.push(store);
@@ -36,20 +79,20 @@ afterEach(() => {
 describe("managed-stage admission", () => {
   it("dispatches nothing for a dependent stage without approval and separate start", () => {
     const { workspace, first, next } = fixture();
-    expect(() => workspace.startStage(next.id)).toThrow(/approved/);
-    const tasks = workspace.startStage(first.id);
+    expect(() => launch(workspace, next.id)).toThrow(/approved/);
+    const tasks = launch(workspace, first.id);
     tasks.forEach((task) =>
       workspace.recordResult(task.id, "completed", "Synthetic evidence"),
     );
-    expect(() => workspace.startStage(next.id)).toThrow(/approved/);
-    workspace.review(first.id, 1, "approve", "Reviewed both outputs");
+    expect(() => launch(workspace, next.id)).toThrow(/approved/);
+    reviewCurrent(workspace, first.id, 1, "approve", "Reviewed both outputs");
     expect(workspace.tasks(next.id)).toHaveLength(0);
-    expect(workspace.startStage(next.id)).toHaveLength(1);
+    expect(launch(workspace, next.id)).toHaveLength(1);
   });
   it("claims once, storing separate identifiers and an immutable snapshot", () => {
     const { workspace, first } = fixture();
-    const tasks = workspace.startStage(first.id);
-    expect(workspace.startStage(first.id)).toEqual([]);
+    const tasks = launch(workspace, first.id);
+    expect(launch(workspace, first.id)).toEqual([]);
     expect(
       new Set([
         tasks[0]?.id,
@@ -64,21 +107,22 @@ describe("managed-stage admission", () => {
   });
   it("blocks unaccounted-for and unknown work", () => {
     const { workspace, first } = fixture();
-    const [task] = workspace.startStage(first.id);
+    const [task] = launch(workspace, first.id);
     workspace.recordResult(task!.id, "unknown", "Connection lost");
-    expect(() => workspace.review(first.id, 1, "approve", "Reviewed")).toThrow(
-      /accounted/,
-    );
+    expect(() =>
+      reviewCurrent(workspace, first.id, 1, "approve", "Reviewed"),
+    ).toThrow(/accounted/);
   });
   it("requires evidence notes and current proposal revision", () => {
     const { workspace, first } = fixture();
-    workspace
-      .startStage(first.id)
-      .forEach((task) =>
-        workspace.recordResult(task.id, "completed", "Result"),
-      );
-    expect(() => workspace.review(first.id, 1, "approve", "")).toThrow();
-    workspace.reviseStage(
+    launch(workspace, first.id).forEach((task) =>
+      workspace.recordResult(task.id, "completed", "Result"),
+    );
+    expect(() =>
+      reviewCurrent(workspace, first.id, 1, "approve", ""),
+    ).toThrow();
+    reviseCurrent(
+      workspace,
       first.id,
       "Use route B",
       "Tides may change",
@@ -86,20 +130,18 @@ describe("managed-stage admission", () => {
       "Route A",
     );
     expect(() =>
-      workspace.review(first.id, 1, "approve", "Read outputs"),
+      reviewCurrent(workspace, first.id, 1, "approve", "Read outputs"),
     ).toThrow(/revision/);
-    workspace.review(first.id, 2, "approve", "Read outputs");
-    workspace.reviseStage(first.id, "Use route C", "", "", "");
+    reviewCurrent(workspace, first.id, 2, "approve", "Read outputs");
+    reviseCurrent(workspace, first.id, "Use route C", "", "", "");
     expect(workspace.stage(first.id).approvedRevision).toBeNull();
   });
   it("invalidates approvals after a context edit without changing launched snapshots", () => {
     const { workspace, project, first, next } = fixture();
-    workspace
-      .startStage(first.id)
-      .forEach((task) =>
-        workspace.recordResult(task.id, "completed", "Result"),
-      );
-    workspace.review(first.id, 1, "approve", "Read results");
+    launch(workspace, first.id).forEach((task) =>
+      workspace.recordResult(task.id, "completed", "Result"),
+    );
+    reviewCurrent(workspace, first.id, 1, "approve", "Read results");
     const item = workspace.context(project.id)[0]!;
     workspace.editContext(
       project.id,
@@ -107,25 +149,23 @@ describe("managed-stage admission", () => {
       "constraint",
       "Avoid nesting sites.",
     );
-    expect(() => workspace.startStage(next.id)).toThrow(/approved|stale/);
-    expect(() => workspace.review(first.id, 1, "approve", "Read")).toThrow(
-      /stale|revision/,
-    );
+    expect(() => launch(workspace, next.id)).toThrow(/approved|stale/);
+    expect(() =>
+      reviewCurrent(workspace, first.id, 1, "approve", "Read"),
+    ).toThrow(/stale|revision/);
     expect(workspace.snapshot(first.id).items[0]?.text).toBe(
       "Use public observations only.",
     );
   });
   it("request changes and rejection never release dependent work", () => {
     const { workspace, first, next } = fixture();
-    workspace
-      .startStage(first.id)
-      .forEach((task) =>
-        workspace.recordResult(task.id, "completed", "Result"),
-      );
-    workspace.review(first.id, 1, "changes", "Missing a tide table");
-    expect(() => workspace.startStage(next.id)).toThrow(/approved/);
-    workspace.review(first.id, 1, "reject", "Do not use this");
-    expect(() => workspace.startStage(next.id)).toThrow(/approved/);
+    launch(workspace, first.id).forEach((task) =>
+      workspace.recordResult(task.id, "completed", "Result"),
+    );
+    reviewCurrent(workspace, first.id, 1, "changes", "Missing a tide table");
+    expect(() => launch(workspace, next.id)).toThrow(/approved/);
+    reviewCurrent(workspace, first.id, 1, "reject", "Do not use this");
+    expect(() => launch(workspace, next.id)).toThrow(/approved/);
   });
   it("archive blocks new starts, promotion preserves provenance", () => {
     const { workspace, project, first } = fixture();
@@ -135,14 +175,14 @@ describe("managed-stage admission", () => {
     });
     expect(workspace.project(project.id).version).toBe(2);
     expect(workspace.context(project.id)[0]?.source.messageId).toBe("m1");
-    expect(() => workspace.startStage(first.id)).toThrow(/archived/);
+    expect(() => launch(workspace, first.id)).toThrow(/archived/);
   });
   it("runs bounded deterministic timers only after an explicit claim", async () => {
     vi.useFakeTimers();
     const { workspace, first, next } = fixture();
     const dispatcher = new DemoDispatcher(workspace);
-    dispatcher.start(first.id);
-    dispatcher.start(first.id);
+    dispatcher.start(first.id, workspace.previewStart(first.id).token);
+    dispatcher.start(first.id, workspace.previewStart(first.id).token);
     await vi.runAllTimersAsync();
     expect(workspace.tasks(first.id).map((task) => task.status)).toEqual([
       "completed",
@@ -153,7 +193,7 @@ describe("managed-stage admission", () => {
   });
   it("exports only project-owned data in a versioned envelope", () => {
     const { workspace, project, first } = fixture();
-    workspace.startStage(first.id);
+    launch(workspace, first.id);
     const bundle = workspace.exportProject(project.id);
     expect(bundle.formatVersion).toBe(1);
     expect(bundle.context).toHaveLength(1);
@@ -178,7 +218,7 @@ it("retains original captured excerpt when the operator creates an interpretatio
 });
 it("requires explicit confirmation to abandon interrupted demo work, without retry or false success", () => {
   const { workspace, first, project } = fixture();
-  workspace.startStage(first.id);
+  launch(workspace, first.id);
   workspace.recover();
   expect(() => workspace.reconcileDemo(first.id, "")).toThrow();
   workspace.reconcileDemo(
@@ -191,7 +231,7 @@ it("requires explicit confirmation to abandon interrupted demo work, without ret
   ]);
   expect(workspace.stage(first.id).status).toBe("rejected");
   expect(workspace.project(project.id)).toBeDefined();
-  expect(workspace.startStage(first.id)).toEqual([]);
+  expect(launch(workspace, first.id)).toEqual([]);
 });
 it("rejects recognizable credential material before it can reach SQLite or an export", () => {
   const { workspace } = fixture();
@@ -214,12 +254,10 @@ it("rejects recognizable credential material before it can reach SQLite or an ex
 });
 it("database enforces append-only review events and immutable snapshots", () => {
   const { workspace, first } = fixture();
-  workspace
-    .startStage(first.id)
-    .forEach((task) =>
-      workspace.recordResult(task.id, "completed", "Synthetic result"),
-    );
-  workspace.review(first.id, 1, "approve", "Both results checked");
+  launch(workspace, first.id).forEach((task) =>
+    workspace.recordResult(task.id, "completed", "Synthetic result"),
+  );
+  reviewCurrent(workspace, first.id, 1, "approve", "Both results checked");
   const snapshot = workspace.snapshot(first.id);
   expect(() =>
     workspace.store.put(

@@ -21,6 +21,7 @@ function Decision({
   const [assumptions, setAssumptions] = useState(stage.assumptions);
   const [missing, setMissing] = useState(stage.missing);
   const [alternatives, setAlternatives] = useState(stage.alternatives);
+  const [requestId] = useState(() => crypto.randomUUID());
   const [note, setNote] = useState("");
   const [read, setRead] = useState<string[]>([]);
   const dirty =
@@ -29,6 +30,7 @@ function Decision({
     missing !== stage.missing ||
     alternatives !== stage.alternatives;
   const ready =
+    !stage.dependencyStale &&
     tasks.length === stage.briefs.length &&
     tasks.every((task) => task.status === "completed") &&
     stage.contextVersion === project.contextVersion &&
@@ -47,13 +49,16 @@ function Decision({
         </div>
         <Tag
           warning={
+            stage.dependencyStale ||
             stage.status === "unknown" ||
             stage.contextVersion !== project.contextVersion
           }
         >
-          {stage.contextVersion !== project.contextVersion
-            ? "Stale context"
-            : stage.status}
+          {stage.dependencyStale
+            ? "Stale dependency · new project required"
+            : stage.contextVersion !== project.contextVersion
+              ? "Stale context"
+              : stage.status}
         </Tag>
       </div>
       <p className="notice">
@@ -137,6 +142,8 @@ function Decision({
             onPress={() =>
               void mutate(() =>
                 api(`/stages/${stage.id}/revise`, {
+                  revision: stage.revision,
+                  generation: stage.reviewGeneration,
                   proposal,
                   assumptions,
                   missing,
@@ -186,6 +193,8 @@ function Decision({
             void mutate(() =>
               api(`/stages/${stage.id}/review`, {
                 revision: stage.revision,
+                generation: stage.reviewGeneration,
+                requestId,
                 action: "approve",
                 note,
               }),
@@ -200,6 +209,8 @@ function Decision({
             void mutate(() =>
               api(`/stages/${stage.id}/review`, {
                 revision: stage.revision,
+                generation: stage.reviewGeneration,
+                requestId,
                 action: "changes",
                 note,
               }),
@@ -215,6 +226,8 @@ function Decision({
             void mutate(() =>
               api(`/stages/${stage.id}/review`, {
                 revision: stage.revision,
+                generation: stage.reviewGeneration,
+                requestId,
                 action: "reject",
                 note,
               }),
@@ -272,7 +285,7 @@ export function Decisions({
       )}
       {reviewable.map((stage) => (
         <Decision
-          key={`${stage.id}:${stage.revision}:${stage.status}`}
+          key={`${stage.id}:${stage.revision}:${stage.reviewGeneration}:${stage.status}`}
           project={project}
           stage={stage}
           tasks={tasks.filter((task) => task.stageId === stage.id)}
