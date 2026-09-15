@@ -16,7 +16,7 @@ This is a runnable MVP for review. It is **not** a full V1 release or a claim of
 - Light/dark/responsive workbench, keyboard controls and reduced motion. Mascot timing/opt-out/dismissal are local; suppressed during errors or stage review. It reserves footer space rather than covering work.
 - Browser fixture with 10,000 synthetic messages renders at most 50 at once.
 
-Commands: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, `npm run test:e2e`. Unit/integration baseline: **33 tests across 5 suites**. Browser baseline: **4 Playwright tests**. `npm audit --omit=dev --audit-level=moderate`: no vulnerabilities reported at review time. A license inventory and full runtime notices are included. No secret scanner can prove arbitrary prose contains no secret; source/fixture review is also required.
+Commands: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, `npm run test:e2e`. Unit/integration baseline: **33 tests across 5 suites**. Browser baseline: **4 Playwright tests**. `npm audit --omit=dev --audit-level=moderate`: no vulnerabilities reported at review time. A license inventory and full runtime notices are included. A fresh `git archive` checkout also passed `npm ci`, typecheck, lint, all 33 unit/integration tests and build. Asset-dependent browser tests were run in the main checkout with parent-supplied imagery; clean-public browser verification waits for its asset commit. Tailwind source scanning is restricted to `src` rather than ambient workspace files. No secret scanner can prove arbitrary prose contains no secret; source/fixture review is also required.
 
 ## Deferred or unverified (do not market as shipped V1)
 
