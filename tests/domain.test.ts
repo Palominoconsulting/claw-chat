@@ -162,3 +162,73 @@ describe("managed-stage admission", () => {
     );
   });
 });
+it("retains original captured excerpt when the operator creates an interpretation", () => {
+  const { workspace, project } = fixture();
+  const item = workspace.context(project.id)[0]!;
+  workspace.editContext(
+    project.id,
+    item.id,
+    "note",
+    "My interpretation is more limited.",
+  );
+  expect(workspace.context(project.id)[0]?.originalText).toBe(
+    "Use public observations only.",
+  );
+  expect(workspace.context(project.id)[0]?.originalHash).toBe(item.hash);
+});
+it("requires explicit confirmation to abandon interrupted demo work, without retry or false success", () => {
+  const { workspace, first, project } = fixture();
+  workspace.startStage(first.id);
+  workspace.recover();
+  expect(() => workspace.reconcileDemo(first.id, "")).toThrow();
+  workspace.reconcileDemo(
+    first.id,
+    "The stopped demo timers cannot run. Abandon these outputs.",
+  );
+  expect(workspace.tasks(first.id).map((task) => task.status)).toEqual([
+    "failed",
+    "failed",
+  ]);
+  expect(workspace.stage(first.id).status).toBe("rejected");
+  expect(workspace.project(project.id)).toBeDefined();
+  expect(workspace.startStage(first.id)).toEqual([]);
+});
+it("rejects recognizable credential material before it can reach SQLite or an export", () => {
+  const { workspace } = fixture();
+  expect(() =>
+    workspace.createProject("Bad paste", "short_term", [
+      {
+        text: "Authorization: Bearer synthetic-secret-value-123456",
+        author: "Test",
+        source: {
+          gateway: "demo",
+          operator: "test",
+          sessionKey: "test",
+          sessionId: "instance",
+          messageId: "m1",
+        },
+      },
+    ]),
+  ).toThrow(/credential/);
+  expect(workspace.store.all("projects")).toHaveLength(1);
+});
+it("database enforces append-only review events and immutable snapshots", () => {
+  const { workspace, first } = fixture();
+  workspace
+    .startStage(first.id)
+    .forEach((task) =>
+      workspace.recordResult(task.id, "completed", "Synthetic result"),
+    );
+  workspace.review(first.id, 1, "approve", "Both results checked");
+  const snapshot = workspace.snapshot(first.id);
+  expect(() =>
+    workspace.store.put(
+      "snapshots",
+      { ...snapshot, digest: "tampered" },
+      { project_id: snapshot.projectId },
+    ),
+  ).toThrow(/immutable/);
+  expect(() => workspace.store.db.exec("UPDATE events SET data=data")).toThrow(
+    /append-only/,
+  );
+});

@@ -11,3 +11,8 @@ coverage/
 test-results/
 playwright-report/
 .DS_Store
+.data-test-*/
+.data-e2e-*/
+*.lock.pid
+
+.artifacts/

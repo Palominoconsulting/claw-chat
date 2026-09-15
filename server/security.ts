@@ -33,9 +33,10 @@ export class Security {
       throw new Error("Non-loopback APP_ORIGIN requires HTTPS");
   }
   headers(res: ServerResponse) {
+    // Exact hash of the pinned React Aria touch-action style; no arbitrary inline styles.
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'sha256-38RhXrc7EdReTKsOm23ZPOCUgniTUUcjky8QOOrQx6o='; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     );
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "no-referrer");
@@ -88,6 +89,12 @@ export class Security {
       `claw_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200${this.target.protocol === "https:" ? "; Secure" : ""}`,
     );
     return entry;
+  }
+  clearSelections() {
+    this.sessions.forEach((session) => {
+      session.selected = null;
+      session.page = [];
+    });
   }
   authorize(req: IncomingMessage) {
     const token = this.token(req);

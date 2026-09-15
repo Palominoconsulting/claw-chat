@@ -45,6 +45,8 @@ export interface GatewayOptions {
 }
 export class GatewayAdapter {
   private client?: GatewayClient;
+  private generation = 0;
+  private cancelConnect?: () => void;
   private selected = new Set<string>();
   private known: Conversation[] = [];
   private state: Connection["state"] = "not_paired";
@@ -91,6 +93,7 @@ export class GatewayAdapter {
     )
       throw new Error("Plaintext Gateway connections must use loopback");
     this.close();
+    const generation = this.generation;
     this.state = "connecting";
     this.detail = "Requesting normal device pairing for operator.read only.";
     await new Promise<void>((resolve, reject) => {
@@ -100,6 +103,14 @@ export class GatewayAdapter {
           "Connection timed out. Complete pairing in your Gateway and try again.";
         reject(new Error(this.detail));
       }, 10000);
+      this.cancelConnect = () => {
+        clearTimeout(timeout);
+        reject(
+          new Error(
+            "Connection closed; complete pairing and explicitly reconnect.",
+          ),
+        );
+      };
       this.client = new GatewayClient({
         url: url.toString(),
         origin: this.options.origin,
@@ -145,9 +156,13 @@ export class GatewayAdapter {
           redactForLog: () => "[Gateway diagnostic omitted]",
         },
         onHelloOk: (hello) => {
+          if (generation !== this.generation) return;
+          this.cancelConnect = undefined;
           clearTimeout(timeout);
           if (
             hello.server.version !== "2026.8.1" ||
+            hello.auth?.role !== "operator" ||
+            !hello.auth.scopes?.includes("operator.read") ||
             hello.auth?.scopes?.some((scope) => scope !== "operator.read")
           ) {
             this.close();
@@ -163,6 +178,7 @@ export class GatewayAdapter {
           resolve();
         },
         onConnectError: () => {
+          if (generation !== this.generation) return;
           clearTimeout(timeout);
           this.close();
           this.detail =
@@ -170,6 +186,7 @@ export class GatewayAdapter {
           reject(new Error(this.detail));
         },
         onClose: () => {
+          if (generation !== this.generation) return;
           this.selected.clear();
           this.known = [];
           if (this.state !== "unsupported") this.state = "not_paired";
@@ -178,6 +195,7 @@ export class GatewayAdapter {
           this.client?.stop();
         },
         onGap: () => {
+          if (generation !== this.generation) return;
           this.selected.clear();
           this.known = [];
           this.detail =
@@ -252,6 +270,8 @@ export class GatewayAdapter {
                       : `[${part.type} content omitted]`,
                   )
                   .join("\n");
+          if (body.length > 20000)
+            throw new Error("Transcript message exceeds bounded text limit");
           return {
             id,
             text: body,
@@ -281,6 +301,9 @@ export class GatewayAdapter {
     }
   }
   close() {
+    this.generation++;
+    this.cancelConnect?.();
+    this.cancelConnect = undefined;
     this.client?.stop();
     this.client = undefined;
     this.selected.clear();

@@ -73,3 +73,30 @@ it("initial migration rollback and forward replay are valid on a disposable data
   expect(store.all("projects")).toEqual([]);
   store.close();
 });
+it("migrates original source metadata without inventing an older edited excerpt", () => {
+  const store = new Store(":memory:", "demo");
+  const workspace = new Workspace(store);
+  const project = workspace.createProject("Migration fixture", "short_term", [
+    {
+      text: "Original observation",
+      author: "Synthetic",
+      source: {
+        gateway: "demo",
+        operator: "fixture",
+        sessionKey: "fixture",
+        sessionId: "one",
+        messageId: "one",
+      },
+    },
+  ]);
+  const item = workspace.context(project.id)[0]!;
+  workspace.editContext(project.id, item.id, "note", "An interpretation");
+  store.db.exec(
+    readFileSync("server/schema/002-original-excerpts.down.sql", "utf8"),
+  );
+  store.db.exec(
+    readFileSync("server/schema/002-original-excerpts.sql", "utf8"),
+  );
+  expect(workspace.context(project.id)[0]?.originalText).toBeNull();
+  store.close();
+});

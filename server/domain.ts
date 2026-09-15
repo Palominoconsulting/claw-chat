@@ -80,6 +80,8 @@ export class Workspace {
       projectId,
       kind: "source_excerpt",
       hash: digest(excerpt.text),
+      originalText: excerpt.text,
+      originalHash: digest(excerpt.text),
       capturedAt: now(),
       version: 1,
     };
@@ -99,7 +101,7 @@ export class Workspace {
       if (item.projectId !== projectId)
         throw new Error("Context does not belong to project");
       // Captured source excerpts remain exact. An edited note must not impersonate original speech.
-      if (kind === "source_excerpt" && value !== item.text)
+      if (kind === "source_excerpt" && value !== item.originalText)
         throw new Error(
           "Source excerpt text is immutable; change kind to note first",
         );
@@ -177,7 +179,7 @@ export class Workspace {
       snapshotId: null,
       contextVersion: null,
       proposal:
-        "Review all outputs and record a proposal before accepting this stage.",
+        "Proceed to the next stage using the outputs reviewed here, retaining their stated limitations.",
       assumptions: "",
       missing: "",
       alternatives: "",
@@ -309,6 +311,43 @@ export class Workspace {
           "Process stopped before acknowledgement. Not retried. Reconciliation required.",
         ),
       );
+  }
+  reconcileDemo(id: string, note: string) {
+    text(note, 4000);
+    const mode = this.store.db
+      .prepare("SELECT value FROM metadata WHERE key='mode'")
+      .get();
+    if (mode?.value !== "demo")
+      throw new Error("Only interrupted synthetic work can be abandoned here");
+    this.store.transaction(() => {
+      const stage = this.stage(id);
+      const tasks = this.tasks(id);
+      if (
+        !tasks.some((task) => task.status === "unknown") ||
+        tasks.some((task) => task.status === "running")
+      )
+        throw new Error("Only stopped unknown work can be reconciled");
+      tasks
+        .filter((task) => task.status === "unknown")
+        .forEach((task) =>
+          this.store.put(
+            "tasks",
+            {
+              ...task,
+              status: "failed",
+              output:
+                "Operator abandoned interrupted synthetic work. No retry and no success claimed.",
+            },
+            { stage_id: id, idempotency_key: task.idempotencyKey },
+          ),
+        );
+      this.store.put(
+        "stages",
+        { ...stage, status: "rejected", approvedRevision: null },
+        { project_id: stage.projectId, position: stage.position },
+      );
+      this.event(stage, "reconcile", note);
+    });
   }
   reviseStage(
     id: string,

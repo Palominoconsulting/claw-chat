@@ -24,6 +24,8 @@ export interface ContextItem extends Excerpt {
   projectId: string;
   kind: ContextKind;
   hash: string;
+  originalText: string | null;
+  originalHash: string | null;
   capturedAt: string;
   version: number;
 }
@@ -90,7 +92,13 @@ export interface ReviewEvent {
   id: string;
   stageId: string;
   revision: number;
-  action: "approve" | "changes" | "reject" | "revise" | "context_changed";
+  action:
+    | "approve"
+    | "changes"
+    | "reject"
+    | "revise"
+    | "context_changed"
+    | "reconcile";
   note: string;
   createdAt: string;
 }

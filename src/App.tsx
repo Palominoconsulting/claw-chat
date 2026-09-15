@@ -38,7 +38,9 @@ export default function App() {
     "welcome",
   );
   const [inspection, setInspection] = useState<Inspection>(null);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(
+    () => window.matchMedia("(min-width: 951px)").matches,
+  );
   const [mobileNav, setMobileNav] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -493,6 +495,7 @@ export default function App() {
             blocked={
               Boolean(error) ||
               tab === "Decisions" ||
+              tab === "Runs" ||
               tasks.some((task) => ["failed", "unknown"].includes(task.status))
             }
           />

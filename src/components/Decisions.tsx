@@ -159,6 +159,25 @@ function Decision({
           maxLength={4000}
         />
       </label>
+      {stage.status === "unknown" && (
+        <section className="notice">
+          <p>
+            Interrupted demo work is unresolved. Confirm its timers stopped to
+            abandon it without claiming success or retrying. This stage remains
+            rejected; create a fresh project for new execution.
+          </p>
+          <Button
+            isDisabled={busy || !note.trim()}
+            onPress={() =>
+              void mutate(() =>
+                api(`/stages/${stage.id}/reconcile`, { note, abandon: true }),
+              )
+            }
+          >
+            Confirm stopped demo · abandon results
+          </Button>
+        </section>
+      )}
       <div className="actions">
         <Button
           variant="primary"

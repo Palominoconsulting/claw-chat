@@ -74,9 +74,13 @@ export function createApp(options: AppOptions) {
     security.headers(res);
     security.checkOrigin(req);
     const url = new URL(req.url ?? "/", options.origin);
-    const path = url.pathname;
+    const rawPath = url.pathname;
+    if (rawPath.startsWith("/api/") && !rawPath.startsWith("/api/v1/"))
+      throw new HttpError(404, "Unsupported API version");
+    const path = rawPath.replace(/^\/api\/v1\//, "/api/");
     if (path === "/api/bootstrap" && req.method === "GET")
       return {
+        apiVersion: 1,
         csrf: security.bootstrap(req, res).csrf,
         connection: connection(),
       };
@@ -178,6 +182,7 @@ export function createApp(options: AppOptions) {
       z.object({}).strict().parse(body);
       if (mode !== "live")
         throw new HttpError(409, "Demo mode cannot contact a Gateway");
+      security.clearSelections();
       await gateway.connect();
       return connection();
     }
@@ -274,7 +279,7 @@ export function createApp(options: AppOptions) {
       return { saved: true };
     }
     const stageMatch = path.match(
-      /^\/api\/stages\/([^/]+)\/(start|review|revise)$/,
+      /^\/api\/stages\/([^/]+)\/(start|review|revise|reconcile)$/,
     );
     if (stageMatch) {
       const id = stageMatch[1]!;
@@ -283,6 +288,17 @@ export function createApp(options: AppOptions) {
           409,
           "Live managed execution is unverified and disabled",
         );
+      if (stageMatch[2] === "reconcile") {
+        const data = z
+          .object({
+            note: z.string().trim().min(1).max(4000),
+            abandon: z.literal(true),
+          })
+          .strict()
+          .parse(body);
+        workspace.reconcileDemo(id, data.note);
+        return { saved: true };
+      }
       if (stageMatch[2] === "start") {
         z.object({}).strict().parse(body);
         return { tasks: dispatcher.start(id) };

@@ -95,6 +95,13 @@ function ContextEditor({
           <dd>{item.source.sessionId}</dd>
           <dt>Message</dt>
           <dd>{item.source.messageId}</dd>
+          <dt>Original captured text</dt>
+          <dd>
+            {item.originalText ??
+              "Original unavailable for this older interpretation"}
+          </dd>
+          <dt>Original SHA-256</dt>
+          <dd className="digest">{item.originalHash ?? "Unavailable"}</dd>
           <dt>Excerpt SHA-256</dt>
           <dd className="digest">{item.hash}</dd>
         </dl>

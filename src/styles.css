@@ -1389,3 +1389,14 @@ blockquote p {
     scroll-behavior: auto !important;
   }
 }
+/* Encouragement reserves footer space; it never floats over a composer or review control. */
+.statusbar {
+  flex-wrap: wrap;
+}
+.mascot {
+  position: static;
+  flex-basis: 100%;
+  max-width: none;
+  margin: 8px 0 12px;
+  box-shadow: none;
+}

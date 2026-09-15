@@ -64,6 +64,9 @@ test("chat → project → parallel stage → review → explicit next start", a
       "Use the reviewed observations for the draft; retain all limitations.",
     );
   await page.getByRole("button", { name: "Save new revision" }).click();
+  await expect(
+    page.getByRole("button", { name: "Approve revision 2" }),
+  ).toBeVisible();
   await page
     .getByRole("checkbox", {
       name: "I examined this output against its acceptance criteria.",
@@ -154,7 +157,6 @@ test("mobile panels are keyboard accessible and reduced motion has no animations
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
   await page.getByRole("button", { name: "Explore the demo" }).click();
-  await page.getByRole("button", { name: "Close inspector" }).click();
   await expect(page.getByLabel("Try the conversation")).toBeVisible();
   await page.getByRole("button", { name: "Menu", exact: true }).click();
   await expect(
@@ -176,4 +178,26 @@ test("mobile panels are keyboard accessible and reduced motion has no animations
       .first()
       .evaluate((element) => getComputedStyle(element).transitionDuration),
   ).toBe("0s");
+});
+
+test("same-origin assets load with no CSP violations or remote requests", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  const external: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("request", (request) => {
+    if (!request.url().startsWith("http://127.0.0.1:4318/"))
+      external.push(request.url());
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Explore the demo" }).click();
+  await expect(
+    page.getByRole("checkbox", { name: "Select message m1", exact: true }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+  expect(external).toEqual([]);
 });
