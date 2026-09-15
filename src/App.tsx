@@ -16,6 +16,9 @@ import { ContextView } from "./components/Context.js";
 import { Runs } from "./components/Runs.js";
 import { Decisions } from "./components/Decisions.js";
 import { Mascot } from "./components/Mascot.js";
+import { GuidedDemo } from "./components/GuidedDemo.js";
+import { GUIDE_PREFERENCE, guidedProgress } from "./lib/guidedDemo.js";
+import type { GuideRun } from "./lib/guidedDemo.js";
 type Tab = "Chat" | "Runs" | "Decisions" | "Context";
 type Inspection =
   | { type: "message"; value: Message }
@@ -27,6 +30,17 @@ const emptyPage: MessagePage = {
   incomplete: false,
 };
 export default function App() {
+  const [guide, setGuide] = useState<GuideRun | null>(null);
+  const [guideSelection, setGuideSelection] = useState<string[]>([]);
+  const workspaceBodyRef = useRef<HTMLDivElement>(null);
+  const [practiceAttempt, setPracticeAttempt] = useState(0);
+  const [guidePreference, setGuidePreference] = useState(() => {
+    try {
+      return localStorage.getItem(GUIDE_PREFERENCE) ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [state, setState] = useState<WorkspaceState | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [projectId, setProjectId] = useState("");
@@ -47,6 +61,35 @@ export default function App() {
   const [stamp, setStamp] = useState("");
   const busyRef = useRef(false);
   const historyRequestRef = useRef(0);
+  useEffect(() => {
+    // Chat owns selection. Resync after saves/page changes that clear its controls,
+    // retaining selection while the exact-excerpt preview replaces the transcript.
+    const transcript = workspaceBodyRef.current?.querySelector(".transcript");
+    if (
+      !transcript ||
+      state?.connection.mode !== "demo" ||
+      tab !== "Chat" ||
+      conversationKey !== "demo:harbor"
+    )
+      return;
+    const checked = Array.from(
+      transcript.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+    )
+      .filter((input) => input.checked)
+      .map((input) => input.getAttribute("aria-label"));
+    const selected = page.messages
+      .filter(
+        (message) =>
+          message.simulated && checked.includes(`Select message ${message.id}`),
+      )
+      .map((message) => message.id);
+    const frame = requestAnimationFrame(() => {
+      setGuideSelection((current) =>
+        current.join("\n") === selected.join("\n") ? current : selected,
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [state, page, tab, conversationKey, practiceAttempt]);
   const [dark, setDark] = useState(() => {
     try {
       return localStorage.getItem("claw-chat.theme") === "dark";
@@ -121,6 +164,7 @@ export default function App() {
     }
   }
   function selectConversation(key: string) {
+    setGuideSelection([]);
     void mutate(async () => {
       await api("/select", { key });
       setConversationKey(key);
@@ -133,6 +177,7 @@ export default function App() {
     });
   }
   function chooseProject(id: string) {
+    setGuideSelection([]);
     setProjectId(id);
     setScreen("workspace");
     setTab("Context");
@@ -140,6 +185,21 @@ export default function App() {
     setInspection(null);
   }
   function created(project: Project) {
+    if (conversationKey === "demo:harbor" && guideSelection.length) {
+      // A delayed create response must not resurrect a skipped guide.
+      setGuide((current) =>
+        current &&
+        !current.projectId &&
+        !current.baselineProjectIds.includes(project.id)
+          ? {
+              ...current,
+              projectId: project.id,
+              sourceMessageIds: guideSelection,
+            }
+          : current,
+      );
+    }
+    setGuideSelection([]);
     setProjectId(project.id);
     setTab("Context");
     setScreen("workspace");
@@ -162,6 +222,44 @@ export default function App() {
     (conversation) => conversation.key === conversationKey,
   );
   const demo = state?.connection.mode === "demo";
+  const progress =
+    state && guide ? guidedProgress(state, guide, guideSelection) : null;
+  useEffect(() => {
+    if (progress?.step !== "complete") return;
+    try {
+      localStorage.setItem(GUIDE_PREFERENCE, "completed");
+    } catch {
+      /* Optional UI preference only. */
+    }
+  }, [progress?.step]);
+  function dismissGuide() {
+    const preference =
+      progress?.step === "complete" ? "completed" : "dismissed";
+    try {
+      localStorage.setItem(GUIDE_PREFERENCE, preference);
+    } catch {
+      /* Practice still works when storage is unavailable. */
+    }
+    setGuidePreference(preference);
+    setGuide(null);
+    setGuideSelection([]);
+  }
+  function startGuide() {
+    if (!demo || !state || busyRef.current) return;
+    setGuide({
+      baselineProjectIds: state.projects.map((item) => item.id),
+      projectId: null,
+      sourceMessageIds: [],
+      inspectedTaskIds: [],
+    });
+    setPracticeAttempt((attempt) => attempt + 1);
+    setProjectId("");
+    selectConversation("demo:harbor");
+  }
+  function navigateTab(next: Tab) {
+    if (next !== tab) setGuideSelection([]);
+    setTab(next);
+  }
   const task =
     inspection?.type === "task"
       ? (state?.tasks.find((task) => task.id === inspection.value.id) ??
@@ -173,6 +271,18 @@ export default function App() {
     void mutate(async () => {
       const snapshot = await api<Snapshot>(`/stages/${value.stageId}/snapshot`);
       setInspection({ type: "task", value, snapshot });
+      if (value.status === "completed" && value.output) {
+        setGuide((current) =>
+          current && snapshot.projectId === current.projectId
+            ? {
+                ...current,
+                inspectedTaskIds: [
+                  ...new Set([...current.inspectedTaskIds, value.id]),
+                ],
+              }
+            : current,
+        );
+      }
     });
   }
   return (
@@ -214,6 +324,11 @@ export default function App() {
             </span>
           </div>
           <div className="top-actions">
+            {demo && screen === "workspace" && !guide && (
+              <Button variant="ghost" isDisabled={busy} onPress={startGuide}>
+                Learn by doing
+              </Button>
+            )}
             <Tag warning={state?.connection.state === "unsupported"}>
               {demo ? "DEMO · SIMULATED" : "LIVE · NOT VERIFIED"}
             </Tag>
@@ -271,15 +386,36 @@ export default function App() {
                 Bring your conversations into focus. Keep the context that
                 matters. Give every next step a deliberate yes.
               </p>
-              <Button
-                variant="primary"
-                onPress={() =>
-                  demo ? selectConversation("demo:harbor") : setScreen("setup")
-                }
-              >
-                {demo ? "Explore the demo" : "Set up a connection"}
-                <Icon name="arrow" />
-              </Button>
+              <div className="guided-welcome-actions">
+                {demo && (
+                  <Button
+                    variant="primary"
+                    isDisabled={busy}
+                    onPress={startGuide}
+                  >
+                    {guidePreference
+                      ? "Try a guided example again"
+                      : "Try a guided example"}
+                    <Icon name="arrow" />
+                  </Button>
+                )}
+                <Button
+                  variant={demo ? "secondary" : "primary"}
+                  isDisabled={busy}
+                  aria-label={
+                    demo ? "Explore the demo · Explore on my own" : undefined
+                  }
+                  onPress={() => {
+                    if (demo) {
+                      dismissGuide();
+                      selectConversation("demo:harbor");
+                    } else setScreen("setup");
+                  }}
+                >
+                  {demo ? "Explore on my own" : "Set up a connection"}
+                  <Icon name="arrow" />
+                </Button>
+              </div>
               <small>
                 {demo
                   ? "Synthetic conversations. Real, local workflow."
@@ -396,7 +532,7 @@ export default function App() {
                     variant="ghost"
                     key={name}
                     aria-current={tab === name ? "page" : undefined}
-                    onPress={() => setTab(name)}
+                    onPress={() => navigateTab(name)}
                   >
                     <Icon
                       name={
@@ -423,10 +559,59 @@ export default function App() {
                   : "No project selected"}
               </span>
             </nav>
-            <div className="workspace-body">
+            {demo && guide && progress && (
+              <GuidedDemo
+                progress={progress}
+                tab={tab}
+                busy={busy}
+                elsewhere={
+                  guide.projectId
+                    ? projectId !== guide.projectId
+                    : conversationKey !== "demo:harbor"
+                }
+                onNavigate={navigateTab}
+                onReturn={() => {
+                  if (guide.projectId) chooseProject(guide.projectId);
+                  else selectConversation("demo:harbor");
+                }}
+                onRestart={startGuide}
+                onDismiss={dismissGuide}
+              />
+            )}
+            <div
+              className="workspace-body"
+              ref={workspaceBodyRef}
+              onChangeCapture={(event) => {
+                // Observe the real Chat checkboxes; no second selection UI or authority.
+                const input = event.target;
+                if (
+                  !guide ||
+                  tab !== "Chat" ||
+                  conversationKey !== "demo:harbor" ||
+                  !(input instanceof HTMLInputElement) ||
+                  input.type !== "checkbox" ||
+                  !input.closest(".message")
+                )
+                  return;
+                const message = page.messages.find(
+                  (item) =>
+                    input.getAttribute("aria-label") ===
+                    `Select message ${item.id}`,
+                );
+                if (!message?.simulated) return;
+                requestAnimationFrame(() => {
+                  if (!input.isConnected) return;
+                  setGuideSelection((selected) =>
+                    input.checked
+                      ? [...new Set([...selected, message.id])]
+                      : selected.filter((id) => id !== message.id),
+                  );
+                });
+              }}
+            >
               {tab === "Chat" ? (
                 <Chat
-                  key={conversationKey}
+                  key={`${conversationKey}:${practiceAttempt}`}
                   conversation={conversation}
                   page={page}
                   offset={offset}
@@ -434,6 +619,7 @@ export default function App() {
                   demo={demo}
                   projects={state.projects}
                   onPage={(start) => {
+                    setGuideSelection([]);
                     void loadPage(conversationKey, start).catch((cause) =>
                       setError(String(cause)),
                     );
@@ -494,6 +680,7 @@ export default function App() {
           <Mascot
             blocked={
               Boolean(error) ||
+              Boolean(guide) ||
               tab === "Decisions" ||
               tab === "Runs" ||
               tasks.some((task) => ["failed", "unknown"].includes(task.status))

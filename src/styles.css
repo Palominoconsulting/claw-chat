@@ -1401,3 +1401,55 @@ blockquote p {
   margin: 8px 0 12px;
   box-shadow: none;
 }
+
+/* Contextual practice stays in document flow; never overlays evidence or errors. */
+.guided-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.guided-welcome-actions .button {
+  min-height: 46px;
+  padding: 12px 18px;
+  font-size: 0.83rem;
+}
+.guided-demo {
+  margin: 16px 28px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand);
+  border-radius: 6px;
+  background: var(--paper);
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+.guided-demo-copy {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.guided-demo h3 {
+  margin: 5px 0;
+}
+.guided-demo p {
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+.guided-demo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+@media (max-width: 650px) {
+  .guided-demo {
+    margin: 12px 16px 0;
+    padding: 12px;
+  }
+  .guided-demo-actions {
+    width: 100%;
+  }
+  .guided-demo .button {
+    min-height: 44px;
+  }
+}
