@@ -33,3 +33,7 @@ Gateway boundary: npm availability verified for exact @openclaw/gateway-client a
 
 ## Known approval boundary
 Real device pairing and production Gateway certification require separately supplied credentials and operator approval. This build does not resolve that permission boundary silently. The MVP can ship for review as a verified demo with an honest live connection setup, not as a fully accepted V1 release.
+
+## Incremental approved first-use guidance — September 15, 2026
+
+Add a small demo-only, opt-in guided example after the initial MVP baseline. `src/lib/guidedDemo.ts` derives one instruction from observed selection/project/task/inspection/revision state; `GuidedDemo.tsx` renders inline help with navigation-only controls, Skip and replay. App/Chat expose real observed selection and successful snapshot inspection; existing backend writes and approval gates remain unchanged. No package/schema/live-capability changes. Test the observation policy first, then exercise the complete existing controls in browser E2E and prove skip/replay creates no project or approval by itself. Document the product principle without personal user context.

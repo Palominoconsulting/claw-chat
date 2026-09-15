@@ -6,7 +6,8 @@ test("chat → project → parallel stage → review → explicit next start", a
   await expect(
     page.getByRole("heading", { name: "Good work. Great claws." }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Explore the demo" }).click();
+  await page.getByRole("button", { name: "Try a guided example" }).click();
+  await expect(page.locator(".guided-demo[data-step=select]")).toBeVisible();
   await page
     .getByRole("checkbox", { name: "Select message m1", exact: true })
     .check();
@@ -45,6 +46,17 @@ test("chat → project → parallel stage → review → explicit next start", a
     page.getByText("completed · Separate observations from assumptions"),
   ).toBeVisible();
   await expect(start).toBeDisabled();
+  await expect(page.locator(".guided-demo[data-step=inspect]")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Inspect", exact: true })
+    .nth(0)
+    .click();
+  await expect(page.locator(".guided-demo[data-step=inspect]")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Inspect", exact: true })
+    .nth(1)
+    .click();
+  await expect(page.locator(".guided-demo[data-step=review]")).toBeVisible();
   await page.getByRole("button", { name: "Decisions", exact: true }).click();
   await page
     .getByRole("checkbox", {
@@ -85,6 +97,7 @@ test("chat → project → parallel stage → review → explicit next start", a
       "Read both simulated outputs and their acceptance criteria. No real-world verification claimed.",
     );
   await page.getByRole("button", { name: "Approve revision 2" }).click();
+  await expect(page.locator(".guided-demo[data-step=start-successor]")).toBeVisible();
   await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(
     page.getByText("Approval recorded. Successor has not started."),
@@ -104,6 +117,8 @@ test("chat → project → parallel stage → review → explicit next start", a
   await expect(
     page.getByText("completed · Cite supporting context and flag assumptions"),
   ).toBeVisible();
+  await expect(page.locator(".guided-demo[data-step=complete]")).toBeVisible();
+  await page.getByRole("button", { name: "Finish practice" }).click();
   await page.getByRole("button", { name: "Context", exact: true }).click();
   await page.getByRole("button", { name: "Preview export" }).click();
   await expect(
@@ -200,4 +215,39 @@ test("same-origin assets load with no CSP violations or remote requests", async 
   ).toBeVisible();
   expect(errors).toEqual([]);
   expect(external).toEqual([]);
+});
+
+test("guided example is skippable and replayable without creating or approving work", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Try a guided example" }).waitFor();
+  const before = (await (await page.request.get("/api/v1/state")).json()) as {
+    projects: unknown[];
+  };
+  await page.getByRole("button", { name: "Try a guided example" }).click();
+  await expect(page.locator(".guided-demo[data-step=select]")).toBeVisible();
+  await page.getByRole("button", { name: "Chat", exact: true }).click();
+  await expect(page.locator(".guided-demo[data-step=select]")).toBeVisible();
+  await page
+    .getByRole("checkbox", { name: "Select message m1", exact: true })
+    .check();
+  await expect(page.locator(".guided-demo[data-step=create-project]")).toBeVisible();
+  await page.getByRole("button", { name: "Skip guide" }).click();
+  await expect(
+    page.getByRole("region", { name: "Learn by doing" }),
+  ).toHaveCount(0);
+  await page.reload();
+  await expect(
+    page.getByRole("region", { name: "Learn by doing" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Try a guided example" }).click();
+  await expect(page.locator(".guided-demo[data-step=select]")).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: "Select message m1", exact: true }),
+  ).not.toBeChecked();
+  const after = (await (await page.request.get("/api/v1/state")).json()) as {
+    projects: unknown[];
+  };
+  expect(after.projects.length).toBe(before.projects.length);
 });

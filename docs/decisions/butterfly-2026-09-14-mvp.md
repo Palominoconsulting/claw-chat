@@ -37,3 +37,7 @@ Real pairing/write-scope/result reconciliation require a separately authorized f
 ## Cannot judge here
 
 A real Gateway's pairing policy, actual session/result projection, native descendant lifecycle and compatibility under connection loss need the separately authorized fixture. Independent reviewer must assess the final code plus the parent-owned artwork commit before release.
+
+## September 15 first-use addendum
+
+The guided example is a two-way UI decision: observation-only state derivation, existing real controls, no new persistent model or capability. It does not consume a browser approval credential, mutate checkpoints, auto-dispatch or invoke models. Panel navigation never advances progress. Skip/replay and failure/stale-state tests keep it optional and prevent false completion. Product notes describe hands-on learning only; no personal user context was added.

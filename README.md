@@ -26,7 +26,11 @@ Run commands from the repository root (migrations live under `server/schema`). S
 
 ## Try the vertical slice
 
-1. **Explore the demo**, then select messages from the harbor conversation.
+For hands-on first use, choose **Try a guided example** on the welcome screen. One inline instruction follows the real demo controls from excerpt selection through a separately started dependent stage. It advances only after observing the actual action/state, never from “Next” clicks. **Skip guide** leaves you in the normal workbench; replay is available on completion or from the welcome screen. No approval or task start is performed for you, and the guide has no live or model side effects. Reloading ends the guidance but preserves your real saved project.
+
+Or explore directly:
+
+1. **Explore on my own**, then select messages from the harbor conversation.
 2. **Preview excerpts** and create a short-term project. Or add the selected excerpts to an existing active project.
 3. In **Context**, edit item kinds, inspect provenance, promote lifetime or preview the project export.
 4. In **Runs**, create a stage with up to four independent tasks and a dependent stage.

@@ -18,3 +18,7 @@ No dashboard KPI grid, glassmorphism, glowing gradients, decorative charts, stre
 
 ## Shipped review surfaces
 Welcome, chat/excerpt preview, stage packet preview, revision checkpoint, context/export preview and connection boundary are implemented in this branch. They remain subject to independent review and a human smoke test.
+
+## Hands-on first-use addition — September 15, 2026
+
+The welcome screen offers “Try a guided example” beside direct demo exploration. A compact inline guide uses existing chat, context, run, inspector and checkpoint controls. It never overlays or disables the workbench. Show-panel buttons navigate only; stage advancement is derived from observed state. Skip is always available and replay retains earlier projects. No new tour dependency, backend route, approval authority, model call or live capability was added.

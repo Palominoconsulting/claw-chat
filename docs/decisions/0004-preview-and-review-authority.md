@@ -1,7 +1,7 @@
 # ADR 0004 — Snapshot-bound capture, launch admission and checkpoint review
 
 Date: 2026-09-15
-Status: Implemented for the synthetic MVP; independent follow-up review required before preview handoff. Live Gateway execution remains disabled.
+Status: Implemented for the synthetic MVP and independently reverified September 15, 2026. All four high and two medium targeted findings passed follow-up review, including an independent ancestor-invalidation reproduction. Human smoke-test acceptance remains separate. Live Gateway execution remains disabled.
 
 ## Reason
 

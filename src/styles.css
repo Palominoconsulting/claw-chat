@@ -1401,7 +1401,6 @@ blockquote p {
   margin: 8px 0 12px;
   box-shadow: none;
 }
-
 /* Contextual practice stays in document flow; never overlays evidence or errors. */
 .guided-welcome-actions {
   display: flex;
