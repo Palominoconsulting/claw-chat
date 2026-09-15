@@ -38,6 +38,28 @@ function Decision({
     note.trim() &&
     !dirty &&
     project.status === "active";
+  const requirementsId = `review-requirements-${stage.id}`;
+  const noteHelpId = `review-note-help-${stage.id}`;
+  const unmetRequirements = [
+    stage.dependencyStale
+      ? "This stage relies on an outdated decision. Use a new project for revised work."
+      : null,
+    stage.contextVersion !== project.contextVersion
+      ? "The context changed. This stage cannot approve the new context."
+      : null,
+    project.status !== "active"
+      ? "Restore this archived project before reviewing."
+      : null,
+    tasks.length !== stage.briefs.length ||
+    tasks.some((task) => task.status !== "completed")
+      ? "All expected task results must be completed and accounted for."
+      : null,
+    read.length !== tasks.length
+      ? `Confirm you examined all ${tasks.length} outputs.`
+      : null,
+    !note.trim() ? "Add the required review note." : null,
+    dirty ? "Save the revised proposal before reviewing it." : null,
+  ].filter((requirement): requirement is string => requirement !== null);
   return (
     <section className="decision">
       <div className="section-heading">
@@ -65,7 +87,13 @@ function Decision({
         Affects: {next?.title ?? "Project completion (no dependent stage yet)"}.
         Approval never starts work.
       </p>
-      <h4>Account for the evidence</h4>
+      <p className="fine-print">* Required</p>
+      <h4>
+        Account for the evidence <span aria-hidden="true">*</span>
+      </h4>
+      <p className="fine-print">
+        Confirm each output before choosing a review action.
+      </p>
       {tasks.map((task) => (
         <div className="evidence" key={task.id}>
           <details>
@@ -80,6 +108,9 @@ function Decision({
           <label className="check-label">
             <input
               type="checkbox"
+              required
+              aria-required="true"
+              aria-describedby={requirementsId}
               checked={read.includes(task.id)}
               onChange={(event) =>
                 setRead(
@@ -157,8 +188,12 @@ function Decision({
         </div>
       )}
       <label>
-        Review note
+        Review note <span aria-hidden="true">*</span>
         <textarea
+          aria-label="Review note"
+          required
+          aria-required="true"
+          aria-describedby={noteHelpId}
           value={note}
           onChange={(event) => setNote(event.target.value)}
           placeholder="What did you examine, and why is this ready (or not)?"
@@ -166,6 +201,10 @@ function Decision({
           maxLength={4000}
         />
       </label>
+      <p id={noteHelpId} className="fine-print">
+        Required for Approve, Request changes, and Reject. Briefly record what
+        you examined.
+      </p>
       {stage.status === "unknown" && (
         <section className="notice">
           <p>
@@ -185,7 +224,36 @@ function Decision({
           </Button>
         </section>
       )}
-      <div className="actions">
+      <div
+        id={requirementsId}
+        className="notice"
+        role="status"
+        aria-label="Review requirements"
+        aria-live="polite"
+      >
+        {busy ? (
+          <p>
+            Saving. Review actions will be available when the request completes.
+          </p>
+        ) : ready ? (
+          <p>Ready to review. Choose Approve, Request changes, or Reject.</p>
+        ) : (
+          <>
+            <p>To enable review actions:</p>
+            <ul>
+              {unmetRequirements.map((requirement) => (
+                <li key={requirement}>{requirement}</li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+      <div
+        className="actions"
+        role="group"
+        aria-label="Review actions"
+        aria-describedby={requirementsId}
+      >
         <Button
           variant="primary"
           isDisabled={!ready || busy}

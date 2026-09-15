@@ -42,7 +42,7 @@ const instructions: Record<
   },
   review: {
     title: "Review the current checkpoint yourself",
-    hint: "In Decisions, examine every output, assess the proposal and add your review note. Approve only if warranted; Request changes or Reject are valid outcomes. Approval never starts a successor.",
+    hint: "In Decisions, confirm each required evidence checkbox, assess the proposal and add the required Review note (*). Approve only if warranted; Request changes or Reject are valid outcomes. Approval never starts a successor.",
     tab: "Decisions",
   },
   changes: {
