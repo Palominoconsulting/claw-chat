@@ -16,6 +16,8 @@ import { ContextView } from "./components/Context.js";
 import { Runs } from "./components/Runs.js";
 import { Decisions } from "./components/Decisions.js";
 import { Mascot } from "./components/Mascot.js";
+import { SoundControls } from "./components/SoundControls.js";
+import { useLobsterSounds } from "./lib/useLobsterSounds.js";
 import { GuidedDemo } from "./components/GuidedDemo.js";
 import { GUIDE_PREFERENCE, guidedProgress } from "./lib/guidedDemo.js";
 import type { GuideRun } from "./lib/guidedDemo.js";
@@ -59,6 +61,24 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [stamp, setStamp] = useState("");
+  const [launchReview, setLaunchReview] = useState(false);
+  const activeTaskProblem =
+    state?.tasks.some(
+      (task) =>
+        ["failed", "unknown"].includes(task.status) &&
+        state.stages.some(
+          (stage) => stage.id === task.stageId && stage.projectId === projectId,
+        ),
+    ) ?? false;
+  const sounds = useLobsterSounds(
+    Boolean(error) ||
+      activeTaskProblem ||
+      (screen === "workspace" && (tab === "Decisions" || launchReview)),
+  );
+  const soundViewRef = useRef({ screen, tab, error });
+  useEffect(() => {
+    soundViewRef.current = { screen, tab, error };
+  }, [screen, tab, error]);
   const busyRef = useRef(false);
   const historyRequestRef = useRef(0);
   useEffect(() => {
@@ -99,10 +119,15 @@ export default function App() {
   });
   const refresh = useCallback(async () => {
     const next = await api<WorkspaceState>("/state");
+    const view = soundViewRef.current;
+    sounds.observe(
+      next,
+      view.screen === "workspace" && view.tab !== "Decisions" && !view.error,
+    );
     setState(next);
     if (next.connection.mode === "demo") setConversations(next.conversations);
     setStamp(new Date().toISOString());
-  }, []);
+  }, [sounds]);
   useEffect(() => {
     void bootstrap()
       .then(refresh)
@@ -134,7 +159,7 @@ export default function App() {
       /* Optional preference. */
     }
   }, [dark]);
-  async function mutate(fn: () => Promise<unknown>) {
+  async function mutate(fn: () => Promise<unknown>, onConfirmed?: () => void) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
@@ -142,6 +167,11 @@ export default function App() {
     try {
       await fn();
       await refresh();
+      try {
+        onConfirmed?.();
+      } catch {
+        /* Decorative observers cannot turn a saved operation into an error. */
+      }
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -351,6 +381,7 @@ export default function App() {
             </Button>
           </div>
         </header>
+        <SoundControls sounds={sounds} />
         {error && (
           <div className="error-banner" role="alert">
             <strong>! Action not completed</strong>
@@ -625,6 +656,7 @@ export default function App() {
                     );
                   }}
                   onCreated={created}
+                  soundAction={sounds.action}
                   mutate={mutate}
                   inspect={(value) => {
                     setInspection({ type: "message", value });
@@ -657,6 +689,8 @@ export default function App() {
                   mutate={mutate}
                   inspect={inspectTask}
                   review={() => setTab("Decisions")}
+                  soundAction={sounds.action}
+                  onReviewing={setLaunchReview}
                 />
               ) : (
                 <Decisions

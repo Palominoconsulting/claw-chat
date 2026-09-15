@@ -40,6 +40,14 @@ Or explore directly:
 
 Photo-heavy welcome; compact working transcript. Light/dark themes, responsive panels, keyboard controls and reduced-motion support. The optional emotional-support lobster waits for about 20 minutes of active foreground use, makes no model calls, shares one cooldown, and can be dismissed or turned off. Its praise does not verify your work.
 
+## Optional Lobster sounds
+
+Open **Lobster sounds: off** just below the top bar, on welcome, Connection settings or the workspace (including mobile). Check **Enable Lobster sounds**, adjust **Volume**, then press **Test sound** to activate this visit. Default is off with a conservative 35% level. Unchecking the box or setting volume to zero mutes immediately. Mute/volume persist locally; reloads and hidden pages require another explicit Test sound gesture. Browser/OS output settings can still silence audio.
+
+The original procedural pack uses short shell taps for a confirmed project/excerpt save, a scuttle for an acknowledged demo stage launch, and a bubbly double whoop for the first observed return of that stage's exact tasks. The whoop means **the simulation returned, not that its findings are correct**. Sounds are decorative; visible state remains authoritative. No approval, message, guide-progress, mascot, navigation or error sounds.
+
+Cues share a 1.2-second cooldown and never overlap; closely spaced events may therefore stay silent. Hidden/muted events are discarded, never replayed. Reviews, failed/unknown/stale stages and errors suppress completion cues. Missing or rejected Web Audio fails silently without breaking the app. Audio uses only local oscillators, filters and gain envelopes, with a longest cue of 0.58 seconds and a conservative master cap. No clips, voice imitation, microphone, network media, speech or new dependencies. The sound preference is separate from lobster encouragement and never changes permission or review state.
+
 ## Runtime settings
 
 | Setting | Meaning |

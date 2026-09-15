@@ -1452,3 +1452,63 @@ blockquote p {
     min-height: 44px;
   }
 }
+
+/* Audio stays in flow on welcome, setup and workspace, including narrow screens. */
+.sound-controls {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 0 26px;
+  font-size: 0.75rem;
+}
+.sound-controls summary {
+  cursor: pointer;
+  min-height: 40px;
+  align-content: center;
+  width: fit-content;
+}
+.sound-controls summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.sound-settings {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 8px 0 16px;
+  max-height: 36vh;
+  overflow: auto;
+}
+.sound-settings label {
+  margin: 0;
+}
+.sound-settings p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  max-width: 70ch;
+}
+.sound-settings small {
+  color: var(--muted);
+}
+.sound-volume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sound-volume input {
+  width: 120px;
+  min-height: 32px;
+  accent-color: var(--brand);
+}
+@media (max-width: 600px) {
+  .sound-controls {
+    padding: 0 16px;
+  }
+  .sound-controls summary {
+    min-height: 44px;
+  }
+  .sound-settings .button {
+    min-height: 44px;
+  }
+}

@@ -1,6 +1,7 @@
+import type { LobsterSounds } from "../lib/useLobsterSounds.js";
 /* Stage task position is the immutable identity within a fixed stage; form values are fully controlled. */
 /* eslint-disable react/no-array-index-key */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   ContextItem,
   StartPreview,
@@ -18,7 +19,12 @@ interface Props {
   context: ContextItem[];
   demo: boolean;
   busy: boolean;
-  mutate: (fn: () => Promise<unknown>) => Promise<void>;
+  mutate: (
+    fn: () => Promise<unknown>,
+    onConfirmed?: () => void,
+  ) => Promise<void>;
+  soundAction: LobsterSounds["action"];
+  onReviewing: (reviewing: boolean) => void;
   inspect: (task: Task) => void;
   review: () => void;
 }
@@ -31,6 +37,8 @@ export function Runs({
   mutate,
   inspect,
   review,
+  soundAction,
+  onReviewing,
 }: Props) {
   const [adding, setAdding] = useState(stages.length === 0);
   const [title, setTitle] = useState("Observe & compare");
@@ -46,6 +54,10 @@ export function Runs({
   ]);
   const [preview, setPreview] = useState<StartPreview | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  useEffect(() => {
+    onReviewing(Boolean(preview));
+    return () => onReviewing(false);
+  }, [preview, onReviewing]);
   function change(index: number, field: keyof TaskBrief, value: string) {
     setBriefs(
       briefs.map((brief, i) =>
@@ -119,14 +131,23 @@ export function Runs({
           <Button
             variant="primary"
             isDisabled={!confirmed || busy}
-            onPress={() =>
-              void mutate(async () => {
-                await api(`/stages/${preview.stage.id}/start`, {
-                  token: preview.token,
-                });
-                setPreview(null);
-              })
-            }
+            onPress={() => {
+              const sound = soundAction();
+              let started: Task[] = [];
+              void mutate(
+                async () => {
+                  const result = await api<{ tasks: Task[] }>(
+                    `/stages/${preview.stage.id}/start`,
+                    {
+                      token: preview.token,
+                    },
+                  );
+                  started = result.tasks;
+                  setPreview(null);
+                },
+                () => sound.started(started),
+              );
+            }}
           >
             Start simulated stage
           </Button>
