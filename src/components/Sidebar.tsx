@@ -68,6 +68,7 @@ export function Sidebar({
   onHome,
   onSetup,
   mobileOpen,
+  inert = false,
 }: {
   projects: Project[];
   conversations: Conversation[];
@@ -78,10 +79,14 @@ export function Sidebar({
   onHome: () => void;
   onSetup: () => void;
   mobileOpen: boolean;
+  inert?: boolean;
 }) {
   const [filter, setFilter] = useState("active");
   return (
-    <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
+    <aside
+      className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}
+      inert={inert}
+    >
       <Button variant="ghost" className="wordmark" onPress={onHome}>
         <span className="brand-mark">c</span>claw<span>chat</span>
         <small>LOCAL</small>
