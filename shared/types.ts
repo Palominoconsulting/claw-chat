@@ -2,6 +2,7 @@ export type Mode = "demo" | "live";
 export type Lifetime = "short_term" | "long_term";
 export type ContextKind =
   | "source_excerpt"
+  | "catalog_reference"
   | "note"
   | "constraint"
   | "assumption"
@@ -167,6 +168,49 @@ export interface WorkspaceState {
   connection: Connection;
   conversations: Conversation[];
 }
+export type CatalogBehavior =
+  | "read_only"
+  | "writes_files"
+  | "external_actions"
+  | "unknown";
+export type CatalogArtifactKind = "md" | "script" | "template" | "workflow";
+export type ScriptLanguage = "python" | "shell" | "javascript";
+export interface CatalogArtifact {
+  id: string;
+  kind: CatalogArtifactKind;
+  language: ScriptLanguage | null;
+  title: string;
+  body: string;
+}
+export interface CatalogSkill {
+  id: string;
+  name: string;
+  summary: string;
+  behavior: CatalogBehavior;
+  artifacts: CatalogArtifact[];
+}
+export interface CatalogPage {
+  id: string;
+  project: string;
+  topic: string;
+  title: string;
+  tags: string[];
+  summary: string;
+  body: string;
+}
+export interface Catalog {
+  available: true;
+  synthetic: true;
+  pages: CatalogPage[];
+  skills: CatalogSkill[];
+}
+export interface CatalogUnavailable {
+  available: false;
+  reason: string;
+}
+export type CatalogRef =
+  | { kind: "wiki"; pageId: string }
+  | { kind: "skill"; skillId: string; artifactId: string };
 export interface ProjectBundle {
   formatVersion: 1;
   exportedAt: string;

@@ -24,6 +24,7 @@ interface Props {
   soundAction: LobsterSounds["action"];
   inspect: (message: Message) => void;
   onSelection?: (count: number) => void;
+  onBrowseCatalog?: () => void;
 }
 export function Chat({
   conversation,
@@ -38,6 +39,7 @@ export function Chat({
   mutate,
   inspect,
   onSelection,
+  onBrowseCatalog,
 }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [preview, setPreview] = useState<{
@@ -64,6 +66,11 @@ export function Chat({
           Open a conversation from the sidebar. Only the one you select is
           fetched.
         </p>
+        {onBrowseCatalog && (
+          <Button variant="ghost" onPress={onBrowseCatalog}>
+            Browse wiki &amp; skills instead
+          </Button>
+        )}
       </Empty>
     );
   const currentSelection = selectedPage === page.pageToken ? selected : [];

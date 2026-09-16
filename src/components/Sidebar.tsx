@@ -67,6 +67,7 @@ export function Sidebar({
   onConversation,
   onHome,
   onSetup,
+  onCatalog,
   mobileOpen,
   inert = false,
 }: {
@@ -78,6 +79,7 @@ export function Sidebar({
   onConversation: (key: string) => void;
   onHome: () => void;
   onSetup: () => void;
+  onCatalog: () => void;
   mobileOpen: boolean;
   inert?: boolean;
 }) {
@@ -92,6 +94,10 @@ export function Sidebar({
         <small>LOCAL</small>
       </Button>
       <div className="sidebar-inner">
+        <Button variant="secondary" className="catalog-entry" onPress={onCatalog}>
+          <Icon name="context" />
+          Browse wiki &amp; skills
+        </Button>
         <div className="sidebar-caption">
           <span>Your projects</span>
           <span>{projects.length.toString().padStart(2, "0")}</span>

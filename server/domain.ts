@@ -75,12 +75,18 @@ export class Workspace {
     });
   }
   private insertContext(projectId: string, excerpt: Excerpt) {
+    // A catalog-derived excerpt (server/catalog.ts) is namespaced under the
+    // reserved gateway id "catalog"; everything else is a real chat excerpt.
+    const kind: ContextKind =
+      excerpt.source.gateway === "catalog"
+        ? "catalog_reference"
+        : "source_excerpt";
     const item: ContextItem = {
       ...excerpt,
       text: text(excerpt.text),
       id: randomUUID(),
       projectId,
-      kind: "source_excerpt",
+      kind,
       hash: digest(excerpt.text),
       originalText: excerpt.text,
       originalHash: digest(excerpt.text),
@@ -102,8 +108,12 @@ export class Workspace {
       const item = this.store.get<ContextItem>("context_items", id);
       if (item.projectId !== projectId)
         throw new Error("Context does not belong to project");
-      // Captured source excerpts remain exact. An edited note must not impersonate original speech.
-      if (kind === "source_excerpt" && value !== item.originalText)
+      // Captured source excerpts and catalog references remain exact. An edited
+      // note must not impersonate original speech or a fixture catalog entry.
+      if (
+        (kind === "source_excerpt" || kind === "catalog_reference") &&
+        value !== item.originalText
+      )
         throw new Error(
           "Source excerpt text is immutable; change kind to note first",
         );

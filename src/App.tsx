@@ -19,6 +19,7 @@ import { Mascot } from "./components/Mascot.js";
 import { SoundControls } from "./components/SoundControls.js";
 import { useLobsterSounds } from "./lib/useLobsterSounds.js";
 import { Inspector } from "./components/Inspector.js";
+import { CatalogPicker } from "./components/CatalogPicker.js";
 import { GuidedDemo } from "./components/GuidedDemo.js";
 import { GUIDE_PREFERENCE, guidedProgress } from "./lib/guidedDemo.js";
 import type { GuideRun } from "./lib/guidedDemo.js";
@@ -51,9 +52,9 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("Chat");
   const [page, setPage] = useState<MessagePage>(emptyPage);
   const [offset, setOffset] = useState(0);
-  const [screen, setScreen] = useState<"welcome" | "workspace" | "setup">(
-    "welcome",
-  );
+  const [screen, setScreen] = useState<
+    "welcome" | "workspace" | "setup" | "catalog"
+  >("welcome");
   const [inspection, setInspection] = useState<Inspection>(null);
   const [inspectorOpen, setInspectorOpen] = useState(
     () => window.matchMedia("(min-width: 951px)").matches,
@@ -443,6 +444,11 @@ export default function App() {
           resetInspection();
           setScreen("setup");
         }}
+        onCatalog={() => {
+          resetInspection();
+          setScreen("catalog");
+          setMobileNav(false);
+        }}
         mobileOpen={mobileNav}
       />
       <main id="main" className="main" tabIndex={-1} inert={inspectorModal}>
@@ -461,7 +467,9 @@ export default function App() {
               <strong>
                 {screen === "setup"
                   ? "Connection"
-                  : (project?.name ?? "A fresh start")}
+                  : screen === "catalog"
+                    ? "Browse wiki & skills"
+                    : (project?.name ?? "A fresh start")}
               </strong>
             </span>
           </div>
@@ -604,6 +612,16 @@ export default function App() {
               </span>
             </section>
           </div>
+        ) : screen === "catalog" ? (
+          <CatalogPicker
+            projects={state.projects}
+            mutate={mutate}
+            onSaved={(savedProject) => {
+              setProjectId(savedProject.id);
+              setTab("Context");
+              setScreen("workspace");
+            }}
+          />
         ) : screen === "setup" ? (
           <div className="setup content-view">
             <span className="eyebrow">Know what’s connected</span>
@@ -781,6 +799,10 @@ export default function App() {
                     rememberInspectionTrigger();
                     setInspection({ type: "message", value });
                     setInspectorOpen(true);
+                  }}
+                  onBrowseCatalog={() => {
+                    resetInspection();
+                    setScreen("catalog");
                   }}
                 />
               ) : !project ? (

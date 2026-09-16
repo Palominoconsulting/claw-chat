@@ -22,6 +22,11 @@ import {
 } from "./demo.js";
 import { GatewayAdapter } from "./gateway.js";
 import { HttpError, Security, jsonBody } from "./security.js";
+import {
+  catalogUnavailable,
+  resolveCatalogExcerpts,
+  syntheticCatalog,
+} from "./catalog.js";
 const keySchema = z.string().min(1).max(2000);
 const selectionSchema = z.object({
   key: keySchema,
@@ -43,6 +48,19 @@ const brief = z
     acceptance: z.string().trim().min(1).max(2000),
   })
   .strict();
+const catalogRefSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("wiki"), pageId: z.string().min(1).max(200) }).strict(),
+  z
+    .object({
+      kind: z.literal("skill"),
+      skillId: z.string().min(1).max(200),
+      artifactId: z.string().min(1).max(200),
+    })
+    .strict(),
+]);
+const catalogSelectionSchema = z.object({
+  refs: z.array(catalogRefSchema).min(1).max(50),
+});
 export interface AppOptions {
   store: Store;
   mode: Mode;
@@ -168,6 +186,12 @@ export function createApp(options: AppOptions) {
     }
     if (path === "/api/conversations" && req.method === "GET")
       return mode === "demo" ? demoConversations : await gateway.list();
+    if (path === "/api/catalog" && req.method === "GET")
+      return mode === "demo"
+        ? syntheticCatalog()
+        : catalogUnavailable(
+            "No real wiki/skills catalog adapter exists yet; this build never reads local files. See docs/decisions/0006-catalog-context-picker.md.",
+          );
     if (path === "/api/history" && req.method === "GET") {
       const query = z
         .object({
@@ -289,14 +313,34 @@ export function createApp(options: AppOptions) {
         .parse(body);
       return workspace.createProject(data.name, data.lifetime, excerpts(data));
     }
+    if (path === "/api/catalog/projects") {
+      if (mode !== "demo")
+        throw new HttpError(409, "Catalog is unavailable outside demo mode");
+      const data = catalogSelectionSchema
+        .extend({ name: z.string().trim().min(1).max(120), lifetime })
+        .strict()
+        .parse(body);
+      return workspace.createProject(
+        data.name,
+        data.lifetime,
+        resolveCatalogExcerpts(data.refs),
+      );
+    }
     const projectMatch = path.match(
-      /^\/api\/projects\/([^/]+)(?:\/(context|stages))?$/,
+      /^\/api\/projects\/([^/]+)(?:\/(context|catalog-context|stages))?$/,
     );
     if (projectMatch) {
       const id = projectMatch[1]!;
       if (projectMatch[2] === "context") {
         const data = selectionSchema.strict().parse(body);
         workspace.addContext(id, excerpts(data));
+        return { saved: true };
+      }
+      if (projectMatch[2] === "catalog-context") {
+        if (mode !== "demo")
+          throw new HttpError(409, "Catalog is unavailable outside demo mode");
+        const data = catalogSelectionSchema.strict().parse(body);
+        workspace.addContext(id, resolveCatalogExcerpts(data.refs));
         return { saved: true };
       }
       if (projectMatch[2] === "stages") {
