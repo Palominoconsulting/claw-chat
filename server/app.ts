@@ -67,11 +67,15 @@ export interface AppOptions {
   origin: string;
   gateway?: GatewayAdapter;
   clientDir?: string;
+  // Test-only override for the in-memory browser-session cap (default 32).
+  // Long, single-server Playwright suites open more sessions than a real
+  // user session ever would; this never changes production behavior.
+  maxSessions?: number;
 }
 export function createApp(options: AppOptions) {
   const { store, mode } = options;
   const workspace = new Workspace(store);
-  const security = new Security(options.origin);
+  const security = new Security(options.origin, options.maxSessions);
   const gateway =
     options.gateway ?? new GatewayAdapter({ origin: options.origin });
   const dispatcher =
