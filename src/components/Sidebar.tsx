@@ -67,7 +67,9 @@ export function Sidebar({
   onConversation,
   onHome,
   onSetup,
+  onCatalog,
   mobileOpen,
+  inert = false,
 }: {
   projects: Project[];
   conversations: Conversation[];
@@ -77,16 +79,25 @@ export function Sidebar({
   onConversation: (key: string) => void;
   onHome: () => void;
   onSetup: () => void;
+  onCatalog: () => void;
   mobileOpen: boolean;
+  inert?: boolean;
 }) {
   const [filter, setFilter] = useState("active");
   return (
-    <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
+    <aside
+      className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}
+      inert={inert}
+    >
       <Button variant="ghost" className="wordmark" onPress={onHome}>
         <span className="brand-mark">c</span>claw<span>chat</span>
         <small>LOCAL</small>
       </Button>
       <div className="sidebar-inner">
+        <Button variant="secondary" className="catalog-entry" onPress={onCatalog}>
+          <Icon name="context" />
+          Browse wiki &amp; skills
+        </Button>
         <div className="sidebar-caption">
           <span>Your projects</span>
           <span>{projects.length.toString().padStart(2, "0")}</span>

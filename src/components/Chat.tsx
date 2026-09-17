@@ -1,3 +1,4 @@
+import type { LobsterSounds } from "../lib/useLobsterSounds.js";
 import { useState } from "react";
 import type {
   Conversation,
@@ -16,9 +17,14 @@ interface Props {
   projects: Project[];
   onPage: (offset: number) => void;
   onCreated: (project: Project) => void;
-  mutate: (fn: () => Promise<unknown>) => Promise<void>;
+  mutate: (
+    fn: () => Promise<unknown>,
+    onConfirmed?: () => void,
+  ) => Promise<void>;
+  soundAction: LobsterSounds["action"];
   inspect: (message: Message) => void;
   onSelection?: (count: number) => void;
+  onBrowseCatalog?: () => void;
 }
 export function Chat({
   conversation,
@@ -29,9 +35,11 @@ export function Chat({
   projects,
   onPage,
   onCreated,
+  soundAction,
   mutate,
   inspect,
   onSelection,
+  onBrowseCatalog,
 }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [preview, setPreview] = useState<{
@@ -58,6 +66,11 @@ export function Chat({
           Open a conversation from the sidebar. Only the one you select is
           fetched.
         </p>
+        {onBrowseCatalog && (
+          <Button variant="ghost" onPress={onBrowseCatalog}>
+            Browse wiki &amp; skills instead
+          </Button>
+        )}
       </Empty>
     );
   const currentSelection = selectedPage === page.pageToken ? selected : [];
@@ -101,25 +114,34 @@ export function Chat({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              void mutate(async () => {
-                const body = {
-                  key: preview.key,
-                  pageToken: preview.pageToken,
-                  messageIds: preview.messages.map((message) => message.id),
-                };
-                if (target) {
-                  await api(`/projects/${target}/context`, body);
-                  setPreview(null);
-                  selectMessages([]);
-                } else {
-                  const project = await api<Project>("/projects", {
-                    ...body,
-                    name,
-                    lifetime,
-                  });
-                  onCreated(project);
-                }
-              });
+              const sound = soundAction();
+              let savedId = "";
+              void mutate(
+                async () => {
+                  const body = {
+                    key: preview.key,
+                    pageToken: preview.pageToken,
+                    messageIds: preview.messages.map((message) => message.id),
+                  };
+                  if (target) {
+                    await api(`/projects/${target}/context`, body);
+                    savedId = `${target}:${crypto.randomUUID()}`;
+                    setPreview(null);
+                    selectMessages([]);
+                  } else {
+                    const project = await api<Project>("/projects", {
+                      ...body,
+                      name,
+                      lifetime,
+                    });
+                    savedId = project.id;
+                    onCreated(project);
+                  }
+                },
+                () => {
+                  if (savedId) sound.saved(savedId);
+                },
+              );
             }}
           >
             <label>

@@ -22,3 +22,19 @@ Welcome, chat/excerpt preview, stage packet preview, revision checkpoint, contex
 ## Hands-on first-use addition — September 15, 2026
 
 The welcome screen offers “Try a guided example” beside direct demo exploration. A compact inline guide uses existing chat, context, run, inspector and checkpoint controls. It never overlays or disables the workbench. Show-panel buttons navigate only; stage advancement is derived from observed state. Skip is always available and replay retains earlier projects. No new tour dependency, backend route, approval authority, model call or live capability was added.
+
+## Original Lobster sounds — September 15, 2026
+
+Approved narrow amendment: local Web Audio shell taps, short scuttle, and a bubbly double whoop. No sampled character/actor audio, automatic speech, microphone, model calls, remote media or sound dependency. Controls live in a compact inline disclosure below the top bar on every screen, including mobile; no overlay or notification surface.
+
+Off by default; explicit enable + Test sound activates this visit. Persist only the boolean and volume under `claw-chat.sounds.v1`. Returning from a hidden page also needs a fresh gesture. Cues last at most 0.58 seconds, share a 1.2-second cooldown and never overlap. Maximum master gain is 0.5 over sequential envelopes capped at 0.12; default slider is 35%. Dropped cues are never queued. This is an independent preference from the mascot.
+
+Trigger only confirmed project/excerpt saves, acknowledged demo starts, and once-only returns of exact current-session task IDs. Silence approvals, messages, navigation, initial/history loads and guide milestones. Reviews/errors/unresolved work suppress celebratory cues. Mute/hidden/disposal immediately disconnect scheduled voices and invalidate pending activation/actions. Sound cannot stand in for visible state or grant permission.
+
+Shipped source: `src/lib/lobsterSounds.ts`, `src/lib/useLobsterSounds.ts`, `src/components/SoundControls.tsx`. Prior art: MDN Web Audio gesture/mute/volume pattern; see the implementation plan. No paid-asset/licensing change. Preference and completion tracking are UI-only, with no backend, review-token or Gateway change.
+
+## Practice navigation repair — September 15, 2026
+
+Keep the existing desktop inspector and full-width mobile pane. The task pane now has sticky, 44-pixel Back/Next controls, actual result position/count, and a navigation-only Review checkpoint action after successful snapshot opening. Mobile uses a dismissible keyboard-contained sheet and sensible focus restoration. Failures and Retry stay inside the pane; late reads cannot replace the current selection or advance guide observation.
+
+The inline guide scrolls with the real workspace controls, so its progress text cannot consume the entire usable area on short screens. `+ Add stage` opens and reveals its actual form instead of toggling an offscreen draft. Repeated Add focuses that same draft; Cancel is explicit. Creation reveals the separate preview button and leaves Start deliberate. No new approval, launch, sound, persistence, or data authority. See ADR 0005 for the reproductions and regression coverage.

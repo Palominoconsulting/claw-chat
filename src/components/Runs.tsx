@@ -1,6 +1,7 @@
+import type { LobsterSounds } from "../lib/useLobsterSounds.js";
 /* Stage task position is the immutable identity within a fixed stage; form values are fully controlled. */
 /* eslint-disable react/no-array-index-key */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ContextItem,
   StartPreview,
@@ -18,7 +19,12 @@ interface Props {
   context: ContextItem[];
   demo: boolean;
   busy: boolean;
-  mutate: (fn: () => Promise<unknown>) => Promise<void>;
+  mutate: (
+    fn: () => Promise<unknown>,
+    onConfirmed?: () => void,
+  ) => Promise<void>;
+  soundAction: LobsterSounds["action"];
+  onReviewing: (reviewing: boolean) => void;
   inspect: (task: Task) => void;
   review: () => void;
 }
@@ -31,8 +37,39 @@ export function Runs({
   mutate,
   inspect,
   review,
+  soundAction,
+  onReviewing,
 }: Props) {
   const [adding, setAdding] = useState(stages.length === 0);
+  const [formReveal, setFormReveal] = useState(0);
+  const [createdStageId, setCreatedStageId] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!adding || !formReveal) return;
+    const frame = requestAnimationFrame(() => {
+      titleRef.current?.focus({ preventScroll: true });
+      titleRef.current?.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [adding, formReveal]);
+  useEffect(() => {
+    if (!createdStageId || !stages.some((stage) => stage.id === createdStageId))
+      return;
+    const frame = requestAnimationFrame(() => {
+      const section = contentRef.current?.querySelector<HTMLElement>(
+        `[data-stage-id="${CSS.escape(createdStageId)}"]`,
+      );
+      const button = section?.querySelector<HTMLButtonElement>(
+        ".stage-footer button",
+      );
+      button?.scrollIntoView({ block: "center" });
+      button?.focus({ preventScroll: true });
+      setCreatedStageId("");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [createdStageId, stages]);
   const [title, setTitle] = useState("Observe & compare");
   const [briefs, setBriefs] = useState<TaskBrief[]>([
     {
@@ -46,6 +83,20 @@ export function Runs({
   ]);
   const [preview, setPreview] = useState<StartPreview | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  useEffect(() => {
+    onReviewing(Boolean(preview));
+    return () => onReviewing(false);
+  }, [preview, onReviewing]);
+  useEffect(() => {
+    if (!preview) return;
+    const frame = requestAnimationFrame(() => {
+      const heading =
+        contentRef.current?.querySelector<HTMLElement>(".launch-preview h3");
+      heading?.scrollIntoView({ block: "start" });
+      heading?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [preview]);
   function change(index: number, field: keyof TaskBrief, value: string) {
     setBriefs(
       briefs.map((brief, i) =>
@@ -54,15 +105,21 @@ export function Runs({
     );
   }
   return (
-    <div className="content-view">
+    <div className="content-view" ref={contentRef}>
       <div className="section-heading">
         <div>
           <span className="eyebrow">Bounded work, deliberate starts</span>
           <h2>One stage at a time.</h2>
         </div>
         <Button
+          ref={addRef}
           isDisabled={project.status === "archived" || !demo}
-          onPress={() => setAdding(!adding)}
+          aria-expanded={adding}
+          aria-controls="stage-form"
+          onPress={() => {
+            setAdding(true);
+            setFormReveal((value) => value + 1);
+          }}
         >
           + Add stage
         </Button>
@@ -78,7 +135,7 @@ export function Runs({
       {preview && (
         <section className="launch-preview" aria-label="Launch preview">
           <div className="section-heading">
-            <h3>Review the launch packet</h3>
+            <h3 tabIndex={-1}>Review the launch packet</h3>
             <Button variant="ghost" onPress={() => setPreview(null)}>
               Cancel
             </Button>
@@ -119,14 +176,23 @@ export function Runs({
           <Button
             variant="primary"
             isDisabled={!confirmed || busy}
-            onPress={() =>
-              void mutate(async () => {
-                await api(`/stages/${preview.stage.id}/start`, {
-                  token: preview.token,
-                });
-                setPreview(null);
-              })
-            }
+            onPress={() => {
+              const sound = soundAction();
+              let started: Task[] = [];
+              void mutate(
+                async () => {
+                  const result = await api<{ tasks: Task[] }>(
+                    `/stages/${preview.stage.id}/start`,
+                    {
+                      token: preview.token,
+                    },
+                  );
+                  started = result.tasks;
+                  setPreview(null);
+                },
+                () => sound.started(started),
+              );
+            }}
           >
             Start simulated stage
           </Button>
@@ -149,7 +215,7 @@ export function Runs({
           (stage.contextVersion !== null &&
             stage.contextVersion !== project.contextVersion);
         return (
-          <section className="stage" key={stage.id}>
+          <section className="stage" data-stage-id={stage.id} key={stage.id}>
             <div className="stage-number">
               {String(index + 1).padStart(2, "0")}
             </div>
@@ -246,20 +312,30 @@ export function Runs({
       })}
       {adding && (
         <form
+          id="stage-form"
           className="stage-form"
           onSubmit={(event) => {
             event.preventDefault();
-            void mutate(async () => {
-              await api(`/projects/${project.id}/stages`, { title, briefs });
-              setAdding(false);
-              setTitle("Draft the field guide");
-              setBriefs([
-                {
-                  objective: "Draft using only reviewed findings",
-                  acceptance: "Cite supporting context and flag assumptions",
-                },
-              ]);
-            });
+            let saved: Stage | undefined;
+            void mutate(
+              async () => {
+                saved = await api<Stage>(`/projects/${project.id}/stages`, {
+                  title,
+                  briefs,
+                });
+                setAdding(false);
+                setTitle("Draft the field guide");
+                setBriefs([
+                  {
+                    objective: "Draft using only reviewed findings",
+                    acceptance: "Cite supporting context and flag assumptions",
+                  },
+                ]);
+              },
+              () => {
+                if (saved) setCreatedStageId(saved.id);
+              },
+            );
           }}
         >
           <h3>
@@ -270,6 +346,7 @@ export function Runs({
           <label>
             Stage title
             <input
+              ref={titleRef}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               required
@@ -314,6 +391,16 @@ export function Runs({
             </fieldset>
           ))}
           <div className="actions">
+            <Button
+              variant="ghost"
+              isDisabled={busy}
+              onPress={() => {
+                setAdding(false);
+                requestAnimationFrame(() => addRef.current?.focus());
+              }}
+            >
+              Cancel stage
+            </Button>
             <Button
               isDisabled={briefs.length >= 4}
               onPress={() =>

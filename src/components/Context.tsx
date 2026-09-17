@@ -9,6 +9,7 @@ import { api, formatTime } from "../lib/api.js";
 import { Button, Tag } from "./Primitives.js";
 const kindLabels: Record<ContextKind, string> = {
   source_excerpt: "Source excerpt",
+  catalog_reference: "Wiki/skill reference",
   note: "Note",
   constraint: "Constraint",
   assumption: "Assumption",

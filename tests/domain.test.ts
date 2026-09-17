@@ -202,6 +202,74 @@ describe("managed-stage admission", () => {
     );
   });
 });
+it("saves a catalog reference as an immutable context item distinct from a chat excerpt", () => {
+  const { workspace, project } = fixture();
+  workspace.addContext(project.id, [
+    {
+      text: "Synthetic wiki fixture: keep excerpts source-linked.",
+      author: "Wiki catalog",
+      source: {
+        gateway: "catalog",
+        operator: "local",
+        sessionKey: "wiki:demo-page",
+        sessionId: "demo-page",
+        messageId: "demo-page",
+      },
+    },
+  ]);
+  const items = workspace.context(project.id);
+  const catalogItem = items.find(
+    (item) => item.source.gateway === "catalog",
+  )!;
+  expect(catalogItem).toBeTruthy();
+  expect(catalogItem.kind).toBe("catalog_reference");
+});
+it("rejects rewriting catalog_reference text without first recategorizing, same as a chat excerpt", () => {
+  const { workspace, project } = fixture();
+  workspace.addContext(project.id, [
+    {
+      text: "Synthetic skill fixture body.",
+      author: "Skill catalog",
+      source: {
+        gateway: "catalog",
+        operator: "local",
+        sessionKey: "skill:demo-skill",
+        sessionId: "demo-skill",
+        messageId: "demo-skill:instructions",
+      },
+    },
+  ]);
+  const item = workspace
+    .context(project.id)
+    .find((entry) => entry.source.gateway === "catalog")!;
+  workspace.editContext(
+    project.id,
+    item.id,
+    "catalog_reference",
+    item.originalText!,
+  );
+  expect(
+    workspace.context(project.id).find((entry) => entry.id === item.id)?.kind,
+  ).toBe("catalog_reference");
+  expect(() =>
+    workspace.editContext(
+      project.id,
+      item.id,
+      "catalog_reference",
+      "Rewritten text pretending to be the original.",
+    ),
+  ).toThrow(/immutable/);
+  workspace.editContext(
+    project.id,
+    item.id,
+    "note",
+    "My note about the fixture, safe to edit.",
+  );
+  expect(
+    workspace.context(project.id).find((entry) => entry.id === item.id)
+      ?.originalText,
+  ).toBe("Synthetic skill fixture body.");
+});
 it("retains original captured excerpt when the operator creates an interpretation", () => {
   const { workspace, project } = fixture();
   const item = workspace.context(project.id)[0]!;

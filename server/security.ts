@@ -15,10 +15,16 @@ export interface BrowserSession {
   selectionGeneration: number;
   pages: Map<string, { key: string; json: string; expires: number }>;
 }
+const DEFAULT_MAX_SESSIONS = 32;
 export class Security {
   private sessions = new Map<string, BrowserSession>();
   private readonly target: URL;
-  constructor(readonly origin: string) {
+  private readonly maxSessions: number;
+  constructor(
+    readonly origin: string,
+    maxSessions: number = DEFAULT_MAX_SESSIONS,
+  ) {
+    this.maxSessions = maxSessions;
     this.target = new URL(origin);
     if (
       this.target.origin !== origin ||
@@ -72,7 +78,7 @@ export class Security {
     if (session && session.expires > Date.now()) return session;
     for (const [key, value] of this.sessions)
       if (value.expires <= Date.now()) this.sessions.delete(key);
-    if (this.sessions.size >= 32)
+    if (this.sessions.size >= this.maxSessions)
       throw new HttpError(
         429,
         "Too many browser sessions; restart the app to clear local sessions",
