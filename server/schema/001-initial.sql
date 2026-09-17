@@ -1,0 +1,16 @@
+PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, data TEXT NOT NULL CHECK(json_valid(data)));
+CREATE TABLE IF NOT EXISTS context_items (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE RESTRICT, data TEXT NOT NULL CHECK(json_valid(data)));
+CREATE INDEX IF NOT EXISTS context_project ON context_items(project_id);
+CREATE TABLE IF NOT EXISTS snapshots (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE RESTRICT, data TEXT NOT NULL CHECK(json_valid(data)));
+CREATE INDEX IF NOT EXISTS snapshots_project ON snapshots(project_id);
+CREATE TABLE IF NOT EXISTS stages (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE RESTRICT, position INTEGER NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)), UNIQUE(project_id, position));
+CREATE INDEX IF NOT EXISTS stages_project ON stages(project_id);
+CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, stage_id TEXT NOT NULL REFERENCES stages(id) ON DELETE RESTRICT, idempotency_key TEXT UNIQUE NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)));
+CREATE INDEX IF NOT EXISTS tasks_stage ON tasks(stage_id);
+CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, stage_id TEXT NOT NULL REFERENCES stages(id) ON DELETE RESTRICT, data TEXT NOT NULL CHECK(json_valid(data)));
+CREATE INDEX IF NOT EXISTS events_stage ON events(stage_id);
+CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, session_key TEXT NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)));
+CREATE INDEX IF NOT EXISTS messages_session ON messages(session_key);
+PRAGMA user_version=1;
