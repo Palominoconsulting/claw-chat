@@ -18,13 +18,14 @@ import { Decisions } from "./components/Decisions.js";
 import { Mascot } from "./components/Mascot.js";
 import { SoundControls } from "./components/SoundControls.js";
 import { useLobsterSounds } from "./lib/useLobsterSounds.js";
+import { Inspector } from "./components/Inspector.js";
 import { GuidedDemo } from "./components/GuidedDemo.js";
 import { GUIDE_PREFERENCE, guidedProgress } from "./lib/guidedDemo.js";
 import type { GuideRun } from "./lib/guidedDemo.js";
 type Tab = "Chat" | "Runs" | "Decisions" | "Context";
 type Inspection =
   | { type: "message"; value: Message }
-  | { type: "task"; value: Task; snapshot?: Snapshot }
+  | { type: "task"; value: Task; snapshot?: Snapshot; error?: string }
   | null;
 const emptyPage: MessagePage = {
   messages: [],
@@ -57,11 +58,34 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(
     () => window.matchMedia("(min-width: 951px)").matches,
   );
+  const [mobileInspector, setMobileInspector] = useState(
+    () => window.matchMedia("(max-width: 680px)").matches,
+  );
+  const inspectionRequestRef = useRef(0);
+  const inspectionReturnRef = useRef<HTMLElement | null>(null);
+  const [openedTaskIds, setOpenedTaskIds] = useState<string[]>([]);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 680px)");
+    const update = () => setMobileInspector(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(
+    () => () => {
+      ++inspectionRequestRef.current;
+    },
+    [],
+  );
+  const inspectorModal =
+    mobileInspector && inspectorOpen && screen === "workspace";
   const [mobileNav, setMobileNav] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [stamp, setStamp] = useState("");
   const [launchReview, setLaunchReview] = useState(false);
+  const visibleError =
+    error ||
+    (inspectorOpen && inspection?.type === "task" ? inspection.error : "");
   const activeTaskProblem =
     state?.tasks.some(
       (task) =>
@@ -71,14 +95,14 @@ export default function App() {
         ),
     ) ?? false;
   const sounds = useLobsterSounds(
-    Boolean(error) ||
+    Boolean(visibleError) ||
       activeTaskProblem ||
       (screen === "workspace" && (tab === "Decisions" || launchReview)),
   );
-  const soundViewRef = useRef({ screen, tab, error });
+  const soundViewRef = useRef({ screen, tab, error: visibleError });
   useEffect(() => {
-    soundViewRef.current = { screen, tab, error };
-  }, [screen, tab, error]);
+    soundViewRef.current = { screen, tab, error: visibleError };
+  }, [screen, tab, visibleError]);
   const busyRef = useRef(false);
   const historyRequestRef = useRef(0);
   useEffect(() => {
@@ -194,6 +218,7 @@ export default function App() {
     }
   }
   function selectConversation(key: string) {
+    resetInspection();
     setGuideSelection([]);
     void mutate(async () => {
       await api("/select", { key });
@@ -207,6 +232,7 @@ export default function App() {
     });
   }
   function chooseProject(id: string) {
+    resetInspection();
     setGuideSelection([]);
     setProjectId(id);
     setScreen("workspace");
@@ -215,6 +241,7 @@ export default function App() {
     setInspection(null);
   }
   function created(project: Project) {
+    resetInspection();
     if (conversationKey === "demo:harbor" && guideSelection.length) {
       // A delayed create response must not resurrect a skipped guide.
       setGuide((current) =>
@@ -295,25 +322,103 @@ export default function App() {
       ? (state?.tasks.find((task) => task.id === inspection.value.id) ??
         inspection.value)
       : null;
-  function inspectTask(value: Task) {
-    setInspectorOpen(true);
-    setInspection({ type: "task", value });
-    void mutate(async () => {
-      const snapshot = await api<Snapshot>(`/stages/${value.stageId}/snapshot`);
-      setInspection({ type: "task", value, snapshot });
-      if (value.status === "completed" && value.output) {
-        setGuide((current) =>
-          current && snapshot.projectId === current.projectId
-            ? {
-                ...current,
-                inspectedTaskIds: [
-                  ...new Set([...current.inspectedTaskIds, value.id]),
-                ],
-              }
-            : current,
-        );
+  const resultTasks = task
+    ? tasks.filter(
+        (item) =>
+          item.stageId === task.stageId &&
+          item.status === "completed" &&
+          item.output,
+      )
+    : [];
+  const resultIndex = resultTasks.findIndex((item) => item.id === task?.id);
+  const observedIds =
+    guide?.projectId === projectId ? guide.inspectedTaskIds : openedTaskIds;
+  const remainingResults = resultTasks.filter(
+    (item) => !observedIds.includes(item.id),
+  );
+  const followingResults = [
+    ...resultTasks.slice(resultIndex + 1),
+    ...resultTasks.slice(0, resultIndex),
+  ];
+  const nextResult =
+    followingResults.find((item) => !observedIds.includes(item.id)) ??
+    followingResults[0];
+  function resetInspection() {
+    ++inspectionRequestRef.current;
+    setInspection(null);
+    if (mobileInspector) setInspectorOpen(false);
+  }
+  function rememberInspectionTrigger() {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && !active.closest(".inspector"))
+      inspectionReturnRef.current = active;
+  }
+  function closeInspector(destination?: "Runs" | "Decisions") {
+    ++inspectionRequestRef.current;
+    setInspectorOpen(false);
+    // Closing an in-flight read cancels observation; reopening starts a fresh read.
+    setInspection((current) =>
+      current?.type === "task" && !current.snapshot ? null : current,
+    );
+    if (destination) navigateTab(destination);
+    requestAnimationFrame(() => {
+      const trigger = inspectionReturnRef.current;
+      if (destination !== "Decisions" && trigger?.isConnected) trigger.focus();
+      else {
+        const heading =
+          workspaceBodyRef.current?.querySelector<HTMLElement>("h2");
+        if (heading) {
+          heading.tabIndex = -1;
+          heading.focus();
+        } else document.getElementById("main")?.focus();
       }
     });
+  }
+  function inspectTask(value: Task) {
+    const selectedStage = stages.find((item) => item.id === value.stageId);
+    if (!selectedStage || !tasks.some((item) => item.id === value.id)) return;
+    rememberInspectionTrigger();
+    const requestId = ++inspectionRequestRef.current;
+    setInspectorOpen(true);
+    setInspection({ type: "task", value });
+    // Snapshot reads are independent of mutation admission. A busy write must not
+    // strand this pane on Loading, and a late read must not replace a newer view.
+    void api<Snapshot>(`/stages/${value.stageId}/snapshot`)
+      .then((snapshot) => {
+        if (requestId !== inspectionRequestRef.current) return;
+        if (
+          snapshot.id !== value.snapshotId ||
+          snapshot.projectId !== selectedStage.projectId
+        )
+          throw new Error(
+            "The returned snapshot does not match this task. Try again or go back to tasks.",
+          );
+        setInspection({ type: "task", value, snapshot });
+        if (value.status === "completed" && value.output) {
+          setOpenedTaskIds((current) => [...new Set([...current, value.id])]);
+          setGuide((current) =>
+            current && snapshot.projectId === current.projectId
+              ? {
+                  ...current,
+                  inspectedTaskIds: [
+                    ...new Set([...current.inspectedTaskIds, value.id]),
+                  ],
+                }
+              : current,
+          );
+        }
+      })
+      .catch((cause: unknown) => {
+        if (requestId !== inspectionRequestRef.current) return;
+        setInspection({
+          type: "task",
+          value,
+          error:
+            cause instanceof Error
+              ? cause.message
+              : "Snapshot could not be loaded.",
+        });
+      });
   }
   return (
     <div
@@ -323,17 +428,24 @@ export default function App() {
         Skip to workspace
       </a>
       <Sidebar
+        inert={inspectorModal}
         projects={state?.projects ?? []}
         conversations={conversations}
         projectId={projectId}
         conversationKey={conversationKey}
         onProject={chooseProject}
         onConversation={selectConversation}
-        onHome={() => setScreen("welcome")}
-        onSetup={() => setScreen("setup")}
+        onHome={() => {
+          resetInspection();
+          setScreen("welcome");
+        }}
+        onSetup={() => {
+          resetInspection();
+          setScreen("setup");
+        }}
         mobileOpen={mobileNav}
       />
-      <main id="main" className="main">
+      <main id="main" className="main" tabIndex={-1} inert={inspectorModal}>
         <header className="topbar">
           <div>
             <Button
@@ -375,7 +487,13 @@ export default function App() {
               variant="ghost"
               aria-label="Toggle inspector"
               aria-expanded={inspectorOpen}
-              onPress={() => setInspectorOpen(!inspectorOpen)}
+              onPress={() => {
+                if (inspectorOpen) closeInspector();
+                else {
+                  rememberInspectionTrigger();
+                  setInspectorOpen(true);
+                }
+              }}
             >
               <Icon name="panel" />
             </Button>
@@ -590,25 +708,6 @@ export default function App() {
                   : "No project selected"}
               </span>
             </nav>
-            {demo && guide && progress && (
-              <GuidedDemo
-                progress={progress}
-                tab={tab}
-                busy={busy}
-                elsewhere={
-                  guide.projectId
-                    ? projectId !== guide.projectId
-                    : conversationKey !== "demo:harbor"
-                }
-                onNavigate={navigateTab}
-                onReturn={() => {
-                  if (guide.projectId) chooseProject(guide.projectId);
-                  else selectConversation("demo:harbor");
-                }}
-                onRestart={startGuide}
-                onDismiss={dismissGuide}
-              />
-            )}
             <div
               className="workspace-body"
               ref={workspaceBodyRef}
@@ -640,6 +739,25 @@ export default function App() {
                 });
               }}
             >
+              {demo && guide && progress && (
+                <GuidedDemo
+                  progress={progress}
+                  tab={tab}
+                  busy={busy}
+                  elsewhere={
+                    guide.projectId
+                      ? projectId !== guide.projectId
+                      : conversationKey !== "demo:harbor"
+                  }
+                  onNavigate={navigateTab}
+                  onReturn={() => {
+                    if (guide.projectId) chooseProject(guide.projectId);
+                    else selectConversation("demo:harbor");
+                  }}
+                  onRestart={startGuide}
+                  onDismiss={dismissGuide}
+                />
+              )}
               {tab === "Chat" ? (
                 <Chat
                   key={`${conversationKey}:${practiceAttempt}`}
@@ -659,6 +777,8 @@ export default function App() {
                   soundAction={sounds.action}
                   mutate={mutate}
                   inspect={(value) => {
+                    ++inspectionRequestRef.current;
+                    rememberInspectionTrigger();
                     setInspection({ type: "message", value });
                     setInspectorOpen(true);
                   }}
@@ -713,7 +833,7 @@ export default function App() {
           </span>
           <Mascot
             blocked={
-              Boolean(error) ||
+              Boolean(visibleError) ||
               Boolean(guide) ||
               tab === "Decisions" ||
               tab === "Runs" ||
@@ -723,17 +843,57 @@ export default function App() {
         </footer>
       </main>
       {inspectorOpen && screen === "workspace" && (
-        <aside className="inspector">
-          <div className="inspector-header">
-            <span>Inspector</span>
-            <Button
-              variant="ghost"
-              aria-label="Close inspector"
-              onPress={() => setInspectorOpen(false)}
-            >
-              ×
-            </Button>
-          </div>
+        <Inspector
+          mobile={mobileInspector}
+          focusKey={inspection?.value.id}
+          onClose={() => closeInspector()}
+          navigation={
+            inspection?.type === "task" && task ? (
+              <nav
+                className="inspector-navigation"
+                aria-label="Result navigation"
+              >
+                <Button onPress={() => closeInspector("Runs")}>
+                  Back to tasks
+                </Button>
+                <p role="status">
+                  {resultIndex >= 0
+                    ? `Result ${resultIndex + 1} of ${resultTasks.length}`
+                    : "Task details"}
+                  {resultIndex >= 0 && (
+                    <small>
+                      {remainingResults.length
+                        ? `${remainingResults.length} of ${resultTasks.length} snapshots still to inspect`
+                        : "All result snapshots opened · review still required"}
+                    </small>
+                  )}
+                </p>
+                <div className="inspector-navigation-actions">
+                  {nextResult && (
+                    <Button onPress={() => inspectTask(nextResult)}>
+                      Next result
+                    </Button>
+                  )}
+                  {resultIndex >= 0 &&
+                    !remainingResults.length &&
+                    inspection.snapshot && (
+                      <Button
+                        variant="primary"
+                        onPress={() => closeInspector("Decisions")}
+                      >
+                        Review checkpoint
+                      </Button>
+                    )}
+                </div>
+              </nav>
+            ) : undefined
+          }
+        >
+          {error && inspectorModal && (
+            <p className="inspector-error" role="alert">
+              ! Action not completed: {error}
+            </p>
+          )}
           {inspection?.type === "message" ? (
             <>
               <span className="eyebrow">Source excerpt</span>
@@ -757,6 +917,15 @@ export default function App() {
             </>
           ) : inspection?.type === "task" && task ? (
             <>
+              {inspection.error && (
+                <div className="inspector-error" role="alert">
+                  <strong>Snapshot not loaded</strong>
+                  <p>{inspection.error}</p>
+                  <Button onPress={() => inspectTask(task)}>
+                    Retry snapshot
+                  </Button>
+                </div>
+              )}
               <span className="eyebrow">App-managed task · demo</span>
               <h3>{task.objective}</h3>
               <Tag warning={task.status === "unknown"}>{task.status}</Tag>
@@ -772,7 +941,12 @@ export default function App() {
                 <dt>Session instance</dt>
                 <dd>{task.sessionId}</dd>
                 <dt>Snapshot SHA-256</dt>
-                <dd>{inspection.snapshot?.digest ?? "Loading…"}</dd>
+                <dd>
+                  {inspection.snapshot?.digest ??
+                    (inspection.error
+                      ? "Unavailable · retry above"
+                      : "Loading…")}
+                </dd>
               </dl>
               <details>
                 <summary>Exact launch snapshot</summary>
@@ -805,7 +979,7 @@ export default function App() {
               </small>
             </div>
           )}
-        </aside>
+        </Inspector>
       )}
     </div>
   );

@@ -164,6 +164,23 @@ describe("guided demo observes actual state, never grants authority", () => {
     run.inspectedTaskIds = [task.id];
     expect(guidedProgress(state, run, []).step).toBe("create-successor");
   });
+  it("names only the actual results still awaiting snapshot inspection", () => {
+    const { state, run } = results();
+    const second = { ...task, id: "second", objective: "Compare routes" };
+    state.stages[0]!.briefs = [
+      stage.briefs[0]!,
+      { objective: second.objective, acceptance: second.acceptance },
+    ];
+    state.tasks.push(second);
+    expect(guidedProgress(state, run, []).remainingResults).toEqual([
+      task.objective,
+      second.objective,
+    ]);
+    run.inspectedTaskIds = [task.id, "unrelated-output"];
+    expect(guidedProgress(state, run, []).remainingResults).toEqual([
+      second.objective,
+    ]);
+  });
   it("does not count missing, failed, unknown or empty outputs as results", () => {
     for (const status of ["failed", "unknown"] as const) {
       const { state, run } = results();

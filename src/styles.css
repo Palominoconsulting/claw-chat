@@ -1512,3 +1512,60 @@ blockquote p {
     min-height: 44px;
   }
 }
+
+/* Result navigation stays in reach while the evidence pane scrolls. */
+.inspector {
+  overscroll-behavior: contain;
+  padding-bottom: max(30px, env(safe-area-inset-bottom));
+  scroll-padding-top: 240px;
+}
+.inspector-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-bottom: 12px;
+  margin-bottom: 18px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.inspector-toolbar .inspector-header {
+  height: 56px;
+  margin-bottom: 8px;
+  border-bottom: 0;
+}
+.inspector .button,
+.inspector summary {
+  min-height: 44px;
+}
+.inspector-header .button {
+  min-width: 44px;
+}
+.inspector-navigation > .button {
+  width: 100%;
+}
+.inspector-navigation p {
+  margin: 10px 0;
+}
+.inspector-navigation small {
+  display: block;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.inspector-navigation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.inspector-error {
+  border: 1px solid var(--warning-ink);
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 680px) {
+  .inspector {
+    inset: max(65px, env(safe-area-inset-top)) 0
+      max(40px, env(safe-area-inset-bottom));
+  }
+}

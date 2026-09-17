@@ -37,12 +37,12 @@ const instructions: Record<
   },
   inspect: {
     title: "Inspect each actual result",
-    hint: "In Runs, choose Inspect beside each completed task. Read its output, acceptance criteria and exact launch snapshot in the inspector.",
+    hint: "In Runs, choose Inspect, then Next result to open each actual output and launch snapshot. Read the acceptance criteria. Review checkpoint returns to Decisions; it does not approve.",
     tab: "Runs",
   },
   review: {
     title: "Review the current checkpoint yourself",
-    hint: "In Decisions, examine every output, assess the proposal and add your review note. Approve only if warranted; Request changes or Reject are valid outcomes. Approval never starts a successor.",
+    hint: "In Decisions, confirm each required evidence checkbox, assess the proposal and add the required Review note (*). Approve only if warranted; Request changes or Reject are valid outcomes. Approval never starts a successor.",
     tab: "Decisions",
   },
   changes: {
@@ -115,6 +115,11 @@ export function GuidedDemo({
             ? "Other projects do not count toward this guide. Return to the practice project or restart with a fresh selection."
             : instruction.hint}
         </p>
+        {!elsewhere && progress.remainingResults && (
+          <p className="guide-remaining">
+            Still to inspect: {progress.remainingResults.join("; ")}
+          </p>
+        )}
       </div>
       <div className="guided-demo-actions">
         {elsewhere ? (

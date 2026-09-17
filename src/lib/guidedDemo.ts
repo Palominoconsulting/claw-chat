@@ -28,6 +28,7 @@ export interface GuideProgress {
   step: GuideStep;
   // Six actions: select, save project, start stage, inspect, review, start successor.
   completed: number;
+  remainingResults?: string[];
 }
 export function guidedProgress(
   state: WorkspaceState,
@@ -96,7 +97,13 @@ export function guidedProgress(
   );
   if (first.status === "changes") return at("changes", inspected ? 4 : 3);
   if (first.status === "rejected") return at("rejected", inspected ? 4 : 3);
-  if (!inspected) return at("inspect", 3);
+  if (!inspected)
+    return {
+      ...at("inspect", 3),
+      remainingResults: tasks
+        .filter((item) => !run.inspectedTaskIds.includes(item.id))
+        .map((item) => item.objective),
+    };
   const approved =
     first.status === "approved" &&
     first.approvedRevision === first.revision &&
