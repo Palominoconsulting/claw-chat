@@ -1586,18 +1586,34 @@ blockquote p {
 .catalog-source-tabs .button[aria-current="page"] {
   box-shadow: inset 0 -2px var(--brand);
 }
+/* The picker is mounted directly inside .main (overflow: hidden), not inside
+   .workspace-body, so it has to own its scrolling. On wide screens the body
+   fills the remaining height and the list/preview columns scroll on their
+   own; if the viewport is too short the whole picker scrolls instead. */
+.catalog-picker {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+}
 .catalog-body {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(240px, 0.9fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 22px;
-  align-items: start;
+  align-items: stretch;
+  flex: 1;
+  min-height: 260px;
 }
 .catalog-list {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  max-height: 70vh;
+  min-height: 0;
   overflow: auto;
+  padding-right: 4px;
 }
 .catalog-group h5 {
   font-size: 0.68rem;
@@ -1707,7 +1723,7 @@ blockquote p {
   border-radius: 8px;
   padding: 18px;
   background: var(--paper);
-  max-height: 70vh;
+  min-height: 0;
   overflow: auto;
 }
 .catalog-preview pre {
@@ -1725,8 +1741,9 @@ blockquote p {
   border-radius: 8px;
   padding: 16px;
   background: var(--sidebar);
-  position: sticky;
-  top: 0;
+  align-self: start;
+  max-height: 100%;
+  overflow: auto;
 }
 .catalog-tray h4 {
   font-size: 0.8rem;
@@ -1758,11 +1775,20 @@ blockquote p {
   font-size: 0.66rem;
 }
 @media (max-width: 950px) {
+  /* Single column: let the whole picker scroll instead of each column. */
   .catalog-body {
     grid-template-columns: 1fr;
+    grid-template-rows: none;
+    align-items: start;
+    flex: none;
+    min-height: 0;
   }
+  .catalog-list,
+  .catalog-preview,
   .catalog-tray {
-    position: static;
+    overflow: visible;
+    max-height: none;
+    padding-right: 0;
   }
 }
 @media (max-width: 680px) {
